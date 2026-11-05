@@ -27,7 +27,7 @@ captures the mouse.
 - **SSH key helper** (Settings → SSH keys): enable the Windows SSH agent, create keys with a
   passphrase and install them on your servers to log in without typing passwords.
 - **Configurable shortcuts** (Settings → Shortcuts).
-- **Languages**: English and Spanish, following Windows by default.
+- **Languages**: English, Spanish and French, following Windows by default.
 - **Updates**: when a new version is published, a small button appears next to the window
   controls. Nothing is downloaded until you accept; the download is checked against its
   published SHA-256 checksum before replacing the program. It can be turned off in
