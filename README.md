@@ -166,5 +166,4 @@ cargo test
 cargo test --features portable
 ```
 
-The code follows a hexagonal architecture (`domain` → `application` → `adapters`). See
-`.claude/CLAUDE.md` for the project structure and conventions.
+The code follows a hexagonal architecture (`domain` → `application` → `adapters`).
