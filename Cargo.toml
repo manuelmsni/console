@@ -1,6 +1,6 @@
 [package]
 name = "console"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 description = "A tabbed terminal for Windows with saved commands, restorable sessions and copy that works"
 license-file = "LICENSE"
@@ -17,7 +17,7 @@ dirs = "5.0.1"
 egui_material_icons = "0.1.0"
 tray-icon = "0.19.2"
 raw-window-handle = "0.6.2"
-# Cifrado con contraseña de la versión portable.
+# Cifrado con contraseÃ±a de la versiÃ³n portable.
 argon2 = "0.5.3"
 chacha20poly1305 = "0.10.1"
 zeroize = "1.8.1"
@@ -31,14 +31,14 @@ windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Globa
 
 [features]
 # `cargo build --release --features portable`: guarda todo junto al programa,
-# cifrado con una contraseña, para llevarlo en un USB o copiarlo a otro equipo.
+# cifrado con una contraseÃ±a, para llevarlo en un USB o copiarlo a otro equipo.
 portable = []
 
 [profile.release]
 opt-level = 3
 
-# Derivar la clave de la contraseña es lento a propósito; sin optimizar, en
-# depuración y en los tests tardaría muchísimo.
+# Derivar la clave de la contraseÃ±a es lento a propÃ³sito; sin optimizar, en
+# depuraciÃ³n y en los tests tardarÃ­a muchÃ­simo.
 [profile.dev.package.argon2]
 opt-level = 3
 
