@@ -1,0 +1,46 @@
+[package]
+name = "console"
+version = "0.0.1"
+edition = "2021"
+description = "A tabbed terminal for Windows with saved commands, restorable sessions and copy that works"
+license-file = "LICENSE"
+repository = "https://github.com/manuelmsni/console"
+
+[dependencies]
+eframe = "0.29.1"
+portable-pty = "0.8.1"
+vt100 = "0.15.2"
+arboard = "3.4.1"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+dirs = "5.0.1"
+egui_material_icons = "0.1.0"
+tray-icon = "0.19.2"
+raw-window-handle = "0.6.2"
+# Cifrado con contraseña de la versión portable.
+argon2 = "0.5.3"
+chacha20poly1305 = "0.10.1"
+zeroize = "1.8.1"
+# Buscar y descargar actualizaciones en las releases de GitHub.
+ureq = "2.10.1"
+sha2 = "0.10.8"
+
+# Solo para Windows: el resto de dependencias sirven en cualquier sistema.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Services", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[features]
+# `cargo build --release --features portable`: guarda todo junto al programa,
+# cifrado con una contraseña, para llevarlo en un USB o copiarlo a otro equipo.
+portable = []
+
+[profile.release]
+opt-level = 3
+
+# Derivar la clave de la contraseña es lento a propósito; sin optimizar, en
+# depuración y en los tests tardaría muchísimo.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

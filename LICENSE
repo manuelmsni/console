@@ -1,0 +1,83 @@
+# Console License
+
+**Copyright © 2026 Manuel Martín Santamaría. All rights reserved.**
+
+Console is **source-available, not open source**. You may use the official builds for free
+for personal use. Commercial use requires a separate written agreement. The source code may be
+read and studied, but not modified, reused, redistributed or exploited.
+
+_The summary above is for convenience only; the terms below are what apply._
+
+---
+
+## 1. Definitions
+
+- **"Software"**: the Console application, its source code, documentation, translations and
+  any other material in this repository, in any form.
+- **"Official Builds"**: the executables of the Software published by the copyright holder on
+  the releases page of the official repository, <https://github.com/manuelmsni/console/releases>.
+- **"Personal Use"**: use by an individual for their own private, non-commercial purposes,
+  such as personal projects, hobbies, learning or study.
+- **"Commercial Use"**: any use that is not Personal Use, including use by or on behalf of a
+  company, organization, institution or public body, and use in the course of paid work.
+
+## 2. Personal use of the application
+
+You may download, install and use the Official Builds for Personal Use, free of charge, on
+any number of your own devices.
+
+## 3. Commercial use
+
+Commercial Use of the Software requires a prior written license agreement with the copyright
+holder. To propose one, see section 9.
+
+## 4. Source code
+
+You may view and study the source code. You may build it, unmodified, only to evaluate it or
+for your own Personal Use, and you may not distribute the resulting builds.
+
+You may not modify the source code, except to prepare contributions submitted to the official
+repository (see section 6). For that purpose only, you may fork the repository on GitHub, as
+GitHub's terms of service allow for public repositories.
+
+## 5. Restrictions
+
+Unless the copyright holder has given prior written permission, you may NOT:
+
+- Redistribute, publish, share, mirror or host copies of the Software or of the Official
+  Builds, modified or unmodified. To share Console, link to the official repository.
+- Sell, sublicense, rent, lease or otherwise monetize the Software.
+- Modify the Software, except as allowed in section 4, or create or distribute modified versions
+  or derivative works of it.
+- Copy the source code, or any substantial part of it, into other software or services.
+- Use the Software or its source code to build a competing product.
+- Use the source code to train, fine-tune or evaluate machine learning or AI models.
+- Remove or alter copyright notices, this license, or the attribution of the Software.
+- Claim authorship or ownership of the Software or of its source code.
+
+## 6. Contributions
+
+Contributions (for example, pull requests, patches or translations) are welcome but not
+required. By submitting a contribution, you confirm that you have the right to submit it, and
+you grant the copyright holder a perpetual, worldwide, irrevocable, royalty-free license to use,
+modify, sublicense, relicense and distribute it as part of the Software, including commercially.
+
+## 7. Termination
+
+This license ends automatically if you breach any of its terms. You must then stop using the
+Software and delete your copies.
+
+## 8. Disclaimer and limitation of liability
+
+The Software is provided "AS IS", without warranty of any kind, express or implied, including
+fitness for a particular purpose and non-infringement. To the maximum extent permitted by
+applicable law, the copyright holder is not liable for any damages arising from the use of, or
+inability to use, the Software, including any loss of data.
+
+All rights not expressly granted by this license are reserved by the copyright holder.
+
+## 9. Commercial licensing and contact
+
+For commercial licensing, or any use not permitted by this license, contact:
+
+**Manuel Martín Santamaría** · **manuelmsni@hotmail.com**

@@ -1,0 +1,142 @@
+# Publica una release al subir una etiqueta de versión (v1.2.3). La crea
+# scripts/release.ps1. Compila cada tipo de programa en una máquina de GitHub,
+# calcula las sumas SHA-256 y sube todo a la release. No hace falta guardar
+# credenciales en el repositorio: usa el token temporal que GitHub da a cada
+# ejecución.
+#
+# Para que cualquiera pueda comprobar que un ejecutable es el oficial (aunque lo
+# haya descargado de otro sitio):
+#   - Cada uno lleva una atestación de procedencia firmada por GitHub (Sigstore):
+#     "este fichero lo compiló este flujo de este repositorio, desde este commit".
+#     Se comprueba con: gh attestation verify <fichero> --repo <usuario>/<repo>
+#   - Las sumas SHA-256 van en SHA256SUMS.txt y también en las notas de la release.
+#
+# Los nombres de los ficheros tienen que coincidir con los que busca la app
+# para actualizarse (`BuildKind::release_file_name` en src/domain/updates.rs).
+
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+  # Para firmar las atestaciones de procedencia.
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    name: ${{ matrix.file }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: windows-latest
+            features: ""
+            target_dir: target
+            built: console.exe
+            file: console-windows-x64.exe
+          - runner: windows-latest
+            features: "--features portable"
+            target_dir: target
+            built: console.exe
+            file: console-windows-x64-portable.exe
+          # Linux: quitar los comentarios cuando exista src/adapters/platform/linux.
+          # - runner: ubuntu-latest
+          #   features: ""
+          #   target_dir: target
+          #   built: console
+          #   file: console-linux-x64
+          # - runner: ubuntu-latest
+          #   features: "--features portable"
+          #   target_dir: target
+          #   built: console
+          #   file: console-linux-x64-portable
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: La etiqueta coincide con la versión de Cargo.toml
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f 2)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Cargo.toml dice $version, pero la etiqueta es $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Tests
+        run: cargo test --locked ${{ matrix.features }}
+
+      - name: Compilar
+        run: cargo build --release --locked ${{ matrix.features }}
+
+      - name: Preparar el fichero
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "${{ matrix.target_dir }}/release/${{ matrix.built }}" "dist/${{ matrix.file }}"
+
+      - name: Atestación de procedencia (firmada por GitHub)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/${{ matrix.file }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.file }}
+          path: dist/${{ matrix.file }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Sumas SHA-256
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Notas (novedades de la etiqueta, sumas y cómo comprobarlas)
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+          {
+            echo
+            echo "## Verify your download"
+            echo
+            echo "SHA-256 of each file. Compare with \`Get-FileHash <file>\` in PowerShell (or \`sha256sum <file>\`):"
+            echo
+            echo '```'
+            cat dist/SHA256SUMS.txt
+            echo '```'
+            echo
+            echo "Each file is also attested by GitHub as built by this repository's release workflow."
+            echo "With the [GitHub CLI](https://cli.github.com/):"
+            echo
+            echo '```'
+            echo "gh attestation verify <file> --repo $GITHUB_REPOSITORY"
+            echo '```'
+          } >> notes.md
+          cat notes.md
+
+      - name: Publicar la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md
