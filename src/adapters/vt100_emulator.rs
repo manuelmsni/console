@@ -206,6 +206,7 @@ fn terminal_color_from(color: vt100::Color, default: TerminalColor) -> TerminalC
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::terminal_session::line_pushed_into_history;
 
     fn empty_emulator() -> Vt100Emulator {
         Vt100Emulator { parser: vt100::Parser::new(5, 20, HISTORY_LINES_KEPT) }
@@ -257,6 +258,23 @@ mod tests {
 
         assert_eq!(emulator.all_text_lines().first().map(String::as_str), Some(r"C:\>dir antiguo"));
         assert_eq!(emulator.line_at_cursor(), r"C:\>", "la consola nueva queda arriba, lista para escribir");
+    }
+
+    /// Una pestaña restaurada con el cursor a media pantalla (como lo deja
+    /// Claude Code, en su cuadro de escritura con líneas debajo): la línea de
+    /// "Sesión restaurada" va debajo de todo, todo lo anterior sube al
+    /// historial y la consola nueva empieza arriba, en una pantalla vacía.
+    #[test]
+    fn restored_text_below_the_cursor_does_not_stay_under_the_new_console() {
+        let cursor_left_in_the_middle = "respuesta\r\n> escribe aqui\r\n? para atajos\x1b[2;3H";
+        let mut emulator = emulator_showing(cursor_left_in_the_middle);
+
+        let heading = line_pushed_into_history("-- restaurada --", &emulator.snapshot());
+        emulator.process_shell_output(&heading);
+
+        assert_eq!(emulator.all_text_lines(), ["respuesta", "> escribe aqui", "? para atajos", "-- restaurada --"]);
+        assert_eq!(emulator.snapshot().last_row_in_use(), None, "la pantalla queda vacía");
+        assert_eq!(emulator.snapshot().visible_cursor, Some(at(0, 0)));
     }
 
     /// Lo que se usa al compactar el diario: un emulador nuevo que reproduce

@@ -152,8 +152,13 @@ impl TerminalSession {
     /// visible al subir con la rueda.
     fn write_heading_line(&mut self, text: &str) {
         let line = format!("{GRAY}── {text} ──{NORMAL_COLOR}");
-        let bytes = line_pushed_into_history(&line, self.size);
+        self.emulator.scroll_to_newest_output();
+        // Primero la pantalla normal, y luego se mira qué hay en ella.
+        let mut bytes = MODES_OF_A_NEW_CONSOLE.as_bytes().to_vec();
         self.emulator.process_shell_output(&bytes);
+        let heading = line_pushed_into_history(&line, &self.emulator.snapshot());
+        self.emulator.process_shell_output(&heading);
+        bytes.extend(heading);
         self.note(JournalEntry::Output(bytes));
     }
 
@@ -465,9 +470,15 @@ pub fn replay_journal(
 
 /// La línea, en una fila propia, seguida de los saltos necesarios para que
 /// la pantalla quede vacía y todo lo anterior pase al historial de scroll.
-fn line_pushed_into_history(line: &str, size: TerminalSize) -> Vec<u8> {
-    let mut text = format!("{MODES_OF_A_NEW_CONSOLE}\r\n{line}");
-    text.push_str(&"\r\n".repeat(size.rows as usize));
+/// Se escribe debajo de la última fila con algo, no donde esté el cursor: un
+/// programa puede haberlo dejado más arriba (Claude Code lo deja en su cuadro
+/// de escritura, con más líneas debajo), y eso se quedaría en pantalla, con la
+/// consola nueva escribiendo encima.
+pub(crate) fn line_pushed_into_history(line: &str, screen: &ScreenSnapshot) -> Vec<u8> {
+    let row_above_line = screen.last_row_in_use().map_or(1, |row| row + 1);
+    let mut text = format!("\x1b[{row_above_line};1H\r\n{line}");
+    text.push_str(&"\r\n".repeat(screen.rows.len()));
+    // La consola nueva empieza a escribir arriba (la del sistema, además, borra).
     text.push_str("\x1b[H");
     text.into_bytes()
 }
