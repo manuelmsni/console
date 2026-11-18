@@ -4,10 +4,13 @@
 //!
 //! La selección la hace siempre esta aplicación, aunque el programa que corre
 //! dentro (por ejemplo Claude Code por SSH) pida el ratón para él. Por eso
-//! aquí sí se puede copiar.
+//! aquí sí se puede copiar. Lo que sí le llega al programa si lo pide son los
+//! clics sin arrastrar y la rueda (ver `domain::terminal_mouse`).
+//!
+//! En el margen derecho está la barra de scroll (`terminal_scrollbar`).
 
 use eframe::egui::{
-    self, Align2, CursorIcon, Event, EventFilter, FontId, Margin, Painter, PointerButton, Pos2, Rect, Response,
+    self, pos2, Align2, CursorIcon, Event, EventFilter, FontId, Margin, Painter, PointerButton, Pos2, Rect, Response,
     Rounding, Sense, Stroke, Ui, Vec2,
 };
 use egui_material_icons::icons::{ICON_CONTENT_COPY, ICON_CONTENT_PASTE};
@@ -56,6 +59,7 @@ impl ConsoleApp {
         self.terminal_card = Some(card);
         let area = card.shrink(CARD_PADDING);
         let grid = CellGrid::fitting_in(area, measure_cell_size(ui, &font_id));
+        let scrollbar_margin = Rect::from_min_max(pos2(area.right(), area.top()), pos2(card.right(), area.bottom()));
 
         if std::mem::take(&mut self.terminal_should_take_focus) || response.clicked() || response.drag_started() {
             response.request_focus();
@@ -75,7 +79,14 @@ impl ConsoleApp {
 
         // Seleccionar no copia: se copia con Ctrl+C o con `Copiar` del clic derecho.
         update_selection_with_mouse(ui, &response, &grid, session);
-        scroll_history_with_mouse_wheel(ui, &response, session, &mut self.unapplied_scroll_lines, grid.cell_size.y);
+        // Mientras se arrastra para seleccionar, el programa no se entera del ratón.
+        let pointer_cell = response
+            .hover_pos()
+            .filter(|pointer| grid.contains(*pointer) && !response.dragged())
+            .map(|pointer| grid.position_at(pointer));
+        session.pointer_moved_to(pointer_cell);
+        turn_mouse_wheel_over_terminal(ui, card, &grid, session, &mut self.unapplied_scroll_lines);
+        self.terminal_scrollbar.show(ui, scrollbar_margin, grid.size.rows, session);
 
         let mut wants_history_picker = false;
         if keyboard_goes_to_terminal {
@@ -100,6 +111,12 @@ impl ConsoleApp {
             if response.clicked() {
                 link_to_open = Some(link.url);
             }
+        } else if response.clicked() {
+            if let Some(pointer) = response.interact_pointer_pos().filter(|pointer| grid.contains(*pointer)) {
+                session.click_at(grid.position_at(pointer));
+            }
+        } else if session.pointer_is_over_something_clickable(&screen) {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
         if let Some(url) = link_to_open {
             status = Some(match self.web_browser.open(&url) {
@@ -210,24 +227,29 @@ fn update_selection_with_mouse(
     }
 }
 
-fn scroll_history_with_mouse_wheel(
+/// La rueda mueve el historial de la pestaña, o se le pasa al programa de
+/// dentro si la ha pedido (lo decide la sesión).
+/// Vale en toda la tarjeta, también sobre la barra de scroll.
+fn turn_mouse_wheel_over_terminal(
     ui: &Ui,
-    response: &Response,
+    card: Rect,
+    grid: &CellGrid,
     session: &mut TerminalSession,
     unapplied_scroll_lines: &mut f32,
-    line_height: f32,
 ) {
-    if !response.hovered() {
+    let Some(pointer) = ui.input(|input| input.pointer.hover_pos()) else { return };
+    // No cuenta si encima hay otra cosa (un diálogo, un menú...).
+    if !ui.rect_contains_pointer(card) {
         return;
     }
     let wheel_movement = ui.input(|input| input.raw_scroll_delta.y);
     if wheel_movement == 0.0 {
         return;
     }
-    *unapplied_scroll_lines += wheel_movement / line_height;
+    *unapplied_scroll_lines += wheel_movement / grid.cell_size.y;
     let whole_lines = unapplied_scroll_lines.trunc();
     if whole_lines != 0.0 {
-        session.scroll_history_by(whole_lines as i32);
+        session.turn_mouse_wheel(whole_lines as i32, grid.position_at(pointer));
         *unapplied_scroll_lines -= whole_lines;
     }
 }

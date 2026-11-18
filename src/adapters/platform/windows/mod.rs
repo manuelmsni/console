@@ -1,6 +1,8 @@
-//! Windows: ConPTY la pone `portable-pty`; aquí va lo demás que solo existe en
+//! Windows: ConPTY la pone `portable-pty` (con la versión moderna incluida en
+//! `bundled_conpty`); aquí va lo demás que solo existe en
 //! Windows (DPAPI, eventos con nombre, servicio ssh-agent, API Win32...).
 
+mod bundled_conpty;
 mod clock;
 mod language;
 mod native_window;
@@ -13,6 +15,7 @@ mod single_instance;
 mod user_encryption;
 mod web_browser;
 
+pub use bundled_conpty::use_bundled_conpty as prepare_terminal_host;
 pub use clock::WindowsClock as SystemClock;
 pub use language::windows_display_language as system_display_language;
 pub use native_window::MainWindow;

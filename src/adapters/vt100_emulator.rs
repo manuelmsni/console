@@ -1,6 +1,8 @@
 //! Interpretación de la salida de terminal con la librería `vt100`.
 
 use crate::application::ports::{TerminalEmulator, TerminalEmulatorFactory};
+use crate::domain::history_scrollbar::HistoryView;
+use crate::domain::terminal_mouse::MouseEncoding;
 use crate::domain::screen_snapshot::{ScreenCell, ScreenSnapshot, TerminalColor};
 use crate::domain::terminal_grid::{GridPosition, TerminalSize};
 use crate::domain::terminal_keys::InputModes;
@@ -59,13 +61,40 @@ impl TerminalEmulator for Vt100Emulator {
 
     fn input_modes(&self) -> InputModes {
         let screen = self.parser.screen();
-        InputModes { application_cursor_keys: screen.application_cursor(), bracketed_paste: screen.bracketed_paste() }
+        let mouse_reporting = match (screen.mouse_protocol_mode(), screen.mouse_protocol_encoding()) {
+            (vt100::MouseProtocolMode::None, _) => None,
+            (_, vt100::MouseProtocolEncoding::Default) => Some(MouseEncoding::SingleBytes),
+            (_, vt100::MouseProtocolEncoding::Utf8) => Some(MouseEncoding::Utf8),
+            (_, vt100::MouseProtocolEncoding::Sgr) => Some(MouseEncoding::Sgr),
+        };
+        InputModes {
+            application_cursor_keys: screen.application_cursor(),
+            bracketed_paste: screen.bracketed_paste(),
+            mouse_reporting,
+            reports_pointer_motion: screen.mouse_protocol_mode() == vt100::MouseProtocolMode::AnyMotion,
+            alternate_screen: screen.alternate_screen(),
+        }
     }
 
     fn scroll_history_by(&mut self, lines: i32) {
         let current_offset = self.parser.screen().scrollback() as i64;
         let new_offset = (current_offset + lines as i64).max(0) as usize;
         self.parser.set_scrollback(new_offset);
+    }
+
+    fn scroll_history_to(&mut self, lines_scrolled_up: usize) {
+        self.parser.set_scrollback(lines_scrolled_up);
+    }
+
+    fn history_view(&mut self) -> HistoryView {
+        let lines_scrolled_up = self.parser.screen().scrollback();
+        // vt100 no dice cuánto historial hay: se pide ir a lo más antiguo
+        // (se queda en el límite) y se vuelve a donde se estaba.
+        self.parser.set_scrollback(usize::MAX);
+        let lines_above_screen = self.parser.screen().scrollback();
+        self.parser.set_scrollback(lines_scrolled_up);
+        let (visible_rows, _) = self.parser.screen().size();
+        HistoryView { lines_above_screen, lines_scrolled_up, visible_rows: visible_rows as usize }
     }
 
     fn scroll_to_newest_output(&mut self) {
@@ -85,6 +114,25 @@ impl TerminalEmulator for Vt100Emulator {
     }
 
     fn replayable_state(&mut self) -> Vec<u8> {
+        if !self.parser.screen().alternate_screen() {
+            return self.normal_screen_replayable_state();
+        }
+        // Un programa a pantalla completa (Claude Code, vim...) está encima de
+        // la pantalla normal, que guarda el historial. vt100 solo deja leer la
+        // pantalla activa: se pasa un momento a la normal con `ESC [ ? 47 l`,
+        // que a diferencia de 1049 no borra ni mueve nada, y se vuelve.
+        self.parser.process(b"\x1b[?47l");
+        let mut bytes = self.normal_screen_replayable_state();
+        self.parser.process(b"\x1b[?47h");
+        bytes.extend(b"\x1b[?1049h");
+        bytes.extend(self.parser.screen().state_formatted());
+        bytes
+    }
+}
+
+impl Vt100Emulator {
+    /// Historial, pantalla, colores, cursor y modos de la pantalla normal.
+    fn normal_screen_replayable_state(&mut self) -> Vec<u8> {
         let (row_count, _) = self.parser.screen().size();
         let mut bytes = Vec::new();
         // El historial de scroll se escribe como texto y se empuja hacia arriba
@@ -223,6 +271,49 @@ mod tests {
 
         assert_eq!(rebuilt.all_text_lines(), original.all_text_lines());
         assert_eq!(rebuilt.snapshot(), original.snapshot());
+    }
+
+    /// Si se guarda con un programa a pantalla completa abierto, la pantalla
+    /// normal y su historial, que quedan debajo, no se pierden.
+    #[test]
+    fn replayable_state_keeps_the_history_under_a_full_screen_program() {
+        let output: Vec<String> = (1..=8).map(|number| format!("linea {number}")).collect();
+        let mut original = emulator_showing(&(output.join("\r\n") + "\x1b[?1049h\x1b[?1000h\x1b[?1006hpantalla completa"));
+
+        let mut rebuilt = empty_emulator();
+        rebuilt.process_shell_output(&original.replayable_state());
+        assert_eq!(rebuilt.snapshot(), original.snapshot());
+        assert_eq!(rebuilt.input_modes(), original.input_modes());
+
+        let program_exits = b"\x1b[?1049l";
+        original.process_shell_output(program_exits);
+        rebuilt.process_shell_output(program_exits);
+        assert_eq!(rebuilt.all_text_lines(), output);
+        assert_eq!(rebuilt.all_text_lines(), original.all_text_lines());
+    }
+
+    #[test]
+    fn history_view_tells_how_much_history_there_is_and_what_is_shown() {
+        let output: Vec<String> = (1..=8).map(|number| format!("linea {number}")).collect();
+        let mut emulator = emulator_showing(&output.join("\r\n"));
+        assert_eq!(emulator.history_view(), HistoryView { lines_above_screen: 3, lines_scrolled_up: 0, visible_rows: 5 });
+
+        emulator.scroll_history_to(2);
+        assert_eq!(emulator.history_view().lines_scrolled_up, 2);
+        assert_eq!(emulator.text_between(at(0, 0), at(0, 6)), "linea 2", "se ve desde la línea 2");
+        emulator.scroll_history_to(99);
+        assert_eq!(emulator.history_view().lines_scrolled_up, 3, "no se pasa de lo más antiguo");
+    }
+
+    #[test]
+    fn programs_asking_for_the_mouse_are_noticed() {
+        let mut emulator = emulator_showing("\x1b[?1049h\x1b[?1002h\x1b[?1006h");
+        let modes = emulator.input_modes();
+        assert!(modes.alternate_screen);
+        assert_eq!(modes.mouse_reporting, Some(MouseEncoding::Sgr));
+
+        emulator.process_shell_output(b"\x1b[?1002l\x1b[?1049l");
+        assert_eq!(emulator.input_modes(), InputModes::default());
     }
 
     #[test]

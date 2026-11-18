@@ -3,6 +3,7 @@
 
 use crate::domain::app_settings::AppSettings;
 use crate::domain::command_library::CommandLibrary;
+use crate::domain::history_scrollbar::HistoryView;
 use crate::domain::local_time::LocalDateTime;
 use crate::domain::screen_snapshot::ScreenSnapshot;
 use crate::domain::shell_profile::ShellProfile;
@@ -37,6 +38,10 @@ pub trait TerminalEmulator {
     fn input_modes(&self) -> InputModes;
     /// Positivo: hacia líneas más antiguas. Negativo: hacia las más recientes.
     fn scroll_history_by(&mut self, lines: i32);
+    /// Deja vista la parte del historial que queda `lines_scrolled_up` líneas por encima de lo más reciente.
+    fn scroll_history_to(&mut self, lines_scrolled_up: usize);
+    /// Cuánto historial hay y qué parte se está viendo, para la barra de scroll.
+    fn history_view(&mut self) -> HistoryView;
     fn scroll_to_newest_output(&mut self);
     /// La línea donde está el cursor, entera aunque ocupe varias filas.
     fn line_at_cursor(&self) -> String;

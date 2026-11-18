@@ -22,6 +22,12 @@ captures the mouse.
   Without a selection, `Ctrl + C` interrupts as usual. Paste with `Ctrl + V`.
 - **Links**: `Ctrl + click` opens web links shown in the terminal, even when they wrap over
   several lines.
+- **Scrolling without a wheel**: a slim scrollbar on the right of the terminal. Drag it or click
+  where you want to go. When the program inside keeps its own history (Claude Code full screen,
+  `less`...), it works as a lever: pull it up or down, further for faster.
+- **Full-screen programs**: programs that use the mouse (like Claude Code) receive clicks and the
+  wheel, so their buttons and option lists can be clicked, and the pointer turns into a hand
+  over what the program highlights. Dragging still selects text for copying.
 - **Frameless window** with its own controls. `✕` hides it in the system tray (terminals keep
   running); `⏻` exits. Launching the app again brings back the window that is already open.
 - **SSH key helper** (Settings → SSH keys): enable the Windows SSH agent, create keys with a
@@ -77,6 +83,11 @@ password you choose the first time you open it.
 | `key.json` | Portable only: salt and parameters to check the password |
 
 SSH keys stay in `%USERPROFILE%\.ssh`, where the system's `ssh` looks for them.
+
+The program also unpacks Microsoft's ConPTY (`conpty.dll` and `OpenConsole.exe`, see
+[Third-party components](#third-party-components)) into `%LOCALAPPDATA%\console\conpty\`, or into
+`data\conpty\` for the portable version. They are not encrypted, because they are the same for
+everyone.
 
 ### How the portable version protects your data
 
@@ -158,6 +169,15 @@ Console is **source-available, not open source**. See [LICENSE](LICENSE) for the
   but it may not be modified (except to propose contributions here), redistributed, reused in
   other software, used to build competing products or used to train AI models.
 - **Sharing**: please link to this repository instead of sharing copies of the program.
+
+### Third-party components
+
+The Windows executable includes Microsoft's ConPTY (`conpty.dll` and `OpenConsole.exe` from the
+[`Microsoft.Windows.Console.ConPTY`](https://www.nuget.org/packages/Microsoft.Windows.Console.ConPTY)
+package, in `vendor/conpty/`). They are © Microsoft Corporation and are distributed under the MIT
+license ([vendor/conpty/LICENSE](vendor/conpty/LICENSE)), not under Console's license. Console
+uses them instead of the ConPTY built into Windows, which on Windows 10 drops lines when a
+program writes more than a screenful at once.
 
 ## Development
 

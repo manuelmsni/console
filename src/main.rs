@@ -20,8 +20,8 @@ use adapters::json_command_library_store::JsonCommandLibraryStore;
 use adapters::json_ssh_server_store::JsonSshServerStore;
 use adapters::github_releases::GitHubReleases;
 use adapters::platform::{
-    available_shell_profiles, claim_single_instance, system_display_language, wait_for_process_to_exit, InstanceStartup,
-    ShowWindowRequests, SystemClock, SystemSshTools, SystemWebBrowser, OPERATING_SYSTEM,
+    available_shell_profiles, claim_single_instance, prepare_terminal_host, system_display_language, wait_for_process_to_exit,
+    InstanceStartup, ShowWindowRequests, SystemClock, SystemSshTools, SystemWebBrowser, OPERATING_SYSTEM,
 };
 use adapters::self_replacing_program::{SelfReplacingProgram, AFTER_UPDATE_ARGUMENT};
 use adapters::pty_shell::PtyShellLauncher;
@@ -48,6 +48,10 @@ fn main() -> eframe::Result<()> {
         // Ya hay una consola abierta y se le ha pedido que se muestre: no abrimos otra.
         InstanceStartup::AlreadyRunning => return Ok(()),
     };
+    // Son programas, no datos del usuario: en la carpeta local, que no viaja con el perfil.
+    if let Some(local_folder) = dirs::data_local_dir() {
+        prepare_terminal_host_or_keep_the_system_one(&local_folder.join("console").join("conpty"));
+    }
     let system_language = system_display_language();
     let data_location = DataFolder::user_config_location();
     rename_user_folder_of_older_versions(&data_location);
@@ -83,6 +87,8 @@ fn main() -> eframe::Result<()> {
         InstanceStartup::FirstInstance(show_window_requests) => show_window_requests,
         InstanceStartup::AlreadyRunning => return Ok(()),
     };
+    // No van cifrados: son los mismos programas para todos.
+    prepare_terminal_host_or_keep_the_system_one(&data_location.join("conpty"));
     // Hasta saber la contraseña no se pueden leer los ajustes: de momento, el
     // idioma del sistema.
     let system_language = system_display_language();
@@ -128,6 +134,13 @@ fn wait_for_previous_version_after_update() {
                 wait_for_process_to_exit(process_id);
             }
         }
+    }
+}
+
+/// Si no se puede, las pestañas funcionan igual con lo que trae el sistema.
+fn prepare_terminal_host_or_keep_the_system_one(folder: &std::path::Path) {
+    if let Err(error) = prepare_terminal_host(folder) {
+        eprintln!("{error}");
     }
 }
 

@@ -50,7 +50,7 @@ if (-not (git remote get-url origin 2> $null)) { Stop-Release "no hay remoto 'or
 if (git status --porcelain) { Stop-Release "hay cambios sin confirmar; haz commit o descártalos antes" }
 if (git tag --list $tag) { Stop-Release "la etiqueta $tag ya existe" }
 
-$cargoToml = Get-Content Cargo.toml -Raw
+$cargoToml = Get-Content Cargo.toml -Raw -Encoding UTF8
 $current = [regex]::Match($cargoToml, '(?m)^version\s*=\s*"(\d+\.\d+\.\d+)"').Groups[1].Value
 # Se puede publicar la versión que ya tiene Cargo.toml (por ejemplo, la primera) o una mayor.
 if ([version]$Version -lt [version]$current) { Stop-Release "$Version es menor que la versión actual ($current)" }

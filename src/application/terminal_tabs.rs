@@ -431,6 +431,7 @@ mod tests {
 
     use super::*;
     use crate::application::ports::{RunningShell, TerminalEmulator};
+    use crate::domain::history_scrollbar::HistoryView;
     use crate::domain::local_time::LocalDateTime;
     use crate::domain::screen_snapshot::ScreenSnapshot;
     use crate::domain::terminal_grid::GridPosition;
@@ -541,6 +542,10 @@ mod tests {
             InputModes::default()
         }
         fn scroll_history_by(&mut self, _lines: i32) {}
+        fn scroll_history_to(&mut self, _lines_scrolled_up: usize) {}
+        fn history_view(&mut self) -> HistoryView {
+            HistoryView::default()
+        }
         fn scroll_to_newest_output(&mut self) {}
         fn line_at_cursor(&self) -> String {
             self.0.borrow().clone()

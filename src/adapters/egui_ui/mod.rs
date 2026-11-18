@@ -36,6 +36,7 @@ mod shortcuts_tab;
 mod sidebar;
 mod ssh_keys_tab;
 mod tab_bar;
+mod terminal_scrollbar;
 mod terminal_view;
 mod theme;
 mod tree_drag_and_drop;
@@ -60,6 +61,7 @@ use history_picker::HistoryPicker;
 use library_dialog::LibraryDialog;
 use rename_in_place::{PendingCommandClick, RenameInPlace};
 use settings_window::SettingsWindow;
+use terminal_scrollbar::TerminalScrollbar;
 pub use window_and_tray::DesktopIntegration;
 use updates::Updates;
 
@@ -112,6 +114,7 @@ pub struct ConsoleApp {
     terminal_should_take_focus: bool,
     /// Lo que la rueda del ratón ha girado sin llegar a una línea entera.
     unapplied_scroll_lines: f32,
+    terminal_scrollbar: TerminalScrollbar,
     updates: Updates,
 }
 
@@ -156,6 +159,7 @@ impl ConsoleApp {
             status_message: startup_warning.or(tray_problem).map(|warning| StatusMessage::new(warning, STARTUP_WARNING_DURATION)),
             terminal_should_take_focus: false,
             unapplied_scroll_lines: 0.0,
+            terminal_scrollbar: TerminalScrollbar::default(),
             updates: Updates::new(update_service),
         };
         app.reopen_previous_tabs_or_open_a_new_one();

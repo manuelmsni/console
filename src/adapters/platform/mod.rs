@@ -14,6 +14,7 @@
 //! | `available_shell_profiles()`                | Terminales que se pueden abrir; la primera es la principal.  |
 //! | `OPERATING_SYSTEM`                          | Qué sistema es, para elegir su ejecutable al actualizar.     |
 //! | `wait_for_process_to_exit(pid)`             | Esperar a que se cierre la versión anterior tras actualizar. |
+//! | `prepare_terminal_host(folder)`             | Antes de la primera pestaña: dejar lista la pseudoterminal (en Windows, la ConPTY moderna; en otros, nada). |
 //!
 //! Para llevar la aplicación a otro sistema basta con añadir su carpeta con
 //! todo lo de la tabla y elegirla abajo con `#[cfg(...)]`.

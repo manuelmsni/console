@@ -2,6 +2,8 @@
 //! Las terminales no reciben "flecha arriba": reciben secuencias de bytes
 //! como `ESC [ A`. Este módulo hace esa traducción.
 
+use super::terminal_mouse::MouseEncoding;
+
 /// Teclas que no son simplemente texto escrito.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerminalKey {
@@ -50,6 +52,12 @@ pub struct InputModes {
     pub application_cursor_keys: bool,
     /// El programa quiere saber qué texto es pegado y cuál tecleado.
     pub bracketed_paste: bool,
+    /// El programa quiere enterarse del ratón (al menos de la rueda), y en qué formato.
+    pub mouse_reporting: Option<MouseEncoding>,
+    /// Además, quiere saber por dónde pasa el ratón aunque no se pulse (para iluminar botones).
+    pub reports_pointer_motion: bool,
+    /// El programa usa la pantalla alternativa (a pantalla completa, sin historial).
+    pub alternate_screen: bool,
 }
 
 pub fn encode_key_press(key: TerminalKey, modifiers: KeyModifiers, modes: InputModes) -> Vec<u8> {

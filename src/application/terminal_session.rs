@@ -4,6 +4,11 @@ use super::ports::{RunningShell, TerminalEmulator};
 use crate::domain::command_history::CommandHistory;
 use crate::i18n::tr_args;
 use crate::domain::local_time::LocalDateTime;
+use crate::domain::history_scrollbar::HistoryView;
+use crate::domain::hover_feedback::HoverFeedback;
+use crate::domain::terminal_mouse::{
+    encode_click, encode_pointer_motion, program_handles_scrolling, MouseWheel, WheelEffect,
+};
 use crate::domain::screen_snapshot::ScreenSnapshot;
 use crate::domain::shell_prompt::text_after_local_prompt;
 use crate::domain::tab_journal::{JournalEntry, TabId, TabRecord};
@@ -21,6 +26,22 @@ const PAUSE_BEFORE_ENTER: Duration = Duration::from_millis(80);
 const GRAY: &str = "\x1b[90m";
 const NORMAL_COLOR: &str = "\x1b[0m";
 
+/// Lo que haya dejado activado el programa anterior (por ejemplo, Claude Code
+/// a pantalla completa si la app se cerró con él abierto), desactivado: la
+/// consola nueva empieza en la pantalla normal, sin ratón y con el cursor visible.
+const MODES_OF_A_NEW_CONSOLE: &str =
+    "\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?2004l\x1b[?1l\x1b[r\x1b[?25h";
+
+/// Quién se encarga de desplazarse, para saber qué hace la barra de scroll.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrollControl {
+    /// El historial de la pestaña.
+    TabHistory(HistoryView),
+    /// El programa de dentro (Claude Code a pantalla completa, less...): no
+    /// se sabe cuánto tiene, solo se le puede pedir que suba o baje.
+    Program,
+}
+
 /// Una pestaña: un proceso de terminal, su pantalla, lo seleccionado en ella,
 /// los comandos que se han ejecutado y lo que falta apuntar en su diario.
 pub struct TerminalSession {
@@ -34,6 +55,10 @@ pub struct TerminalSession {
     command_history: CommandHistory,
     shell_has_exited: bool,
     enter_scheduled_at: Option<Instant>,
+    mouse_wheel: MouseWheel,
+    /// La celda sobre la que está el ratón (`None`: fuera de la terminal).
+    pointer_cell: Option<GridPosition>,
+    hover_feedback: HoverFeedback,
     /// Lo ocurrido desde la última vez que se guardó el diario.
     unsaved_journal_entries: Vec<JournalEntry>,
     /// El diario debe reescribirse entero (por ejemplo, tras borrar un comando
@@ -99,6 +124,9 @@ impl TerminalSession {
             command_history: CommandHistory::default(),
             shell_has_exited: false,
             enter_scheduled_at: None,
+            mouse_wheel: MouseWheel::default(),
+            pointer_cell: None,
+            hover_feedback: HoverFeedback::default(),
             unsaved_journal_entries: vec![JournalEntry::Resized(size)],
             journal_must_be_compacted: false,
             has_unsaved_changes: false,
@@ -118,9 +146,10 @@ impl TerminalSession {
     }
 
     /// Escribe una línea gris (y la apunta en el diario). La consola escribe
-    /// desde arriba de la pantalla y la borra al arrancar, así que la línea se
-    /// empuja hacia el historial de scroll: queda justo encima de lo que
-    /// escriba la consola, visible al subir con la rueda.
+    /// desde arriba de la pantalla (la del sistema, además, la borra al
+    /// arrancar), así que la línea se empuja hacia el historial de scroll y el
+    /// cursor vuelve arriba: queda justo encima de lo que escriba la consola,
+    /// visible al subir con la rueda.
     fn write_heading_line(&mut self, text: &str) {
         let line = format!("{GRAY}── {text} ──{NORMAL_COLOR}");
         let bytes = line_pushed_into_history(&line, self.size);
@@ -325,6 +354,65 @@ impl TerminalSession {
         self.selection = None;
     }
 
+    pub fn scroll_history_to(&mut self, lines_scrolled_up: usize) {
+        self.emulator.scroll_history_to(lines_scrolled_up);
+        self.selection = None;
+    }
+
+    pub fn scroll_control(&mut self) -> ScrollControl {
+        if program_handles_scrolling(self.emulator.input_modes()) {
+            ScrollControl::Program
+        } else {
+            ScrollControl::TabHistory(self.emulator.history_view())
+        }
+    }
+
+    /// Un clic (sin arrastrar) se le pasa al programa si ha pedido el ratón,
+    /// para que funcione lo que tenga para pulsar (en Claude Code, "Jump to
+    /// bottom" o las opciones de una lista).
+    pub fn click_at(&mut self, position: GridPosition) {
+        if let Some(bytes) = encode_click(position, self.emulator.input_modes()) {
+            self.send_to_shell(&bytes);
+        }
+    }
+
+    /// El ratón ha pasado a otra celda (`None`: ha salido de la terminal o se
+    /// está arrastrando para seleccionar). Si el programa lo ha pedido, se le
+    /// cuenta, para que ilumine lo que se puede pulsar.
+    pub fn pointer_moved_to(&mut self, position: Option<GridPosition>) {
+        if position == self.pointer_cell {
+            return;
+        }
+        self.pointer_cell = position;
+        self.hover_feedback.pointer_moved(position, &self.emulator.snapshot());
+        let motion = position.and_then(|position| encode_pointer_motion(position, self.emulator.input_modes()));
+        if let Some(bytes) = motion {
+            // Sin `send_to_shell`: mover el ratón no quita la selección.
+            self.shell.send_input(&bytes);
+        }
+    }
+
+    /// `true` si el programa ha iluminado lo que hay bajo el ratón, es decir,
+    /// si ahí hay algo que se puede pulsar. `screen` es la pantalla de ahora.
+    pub fn pointer_is_over_something_clickable(&mut self, screen: &ScreenSnapshot) -> bool {
+        let modes = self.emulator.input_modes();
+        match self.pointer_cell {
+            Some(position) if modes.reports_pointer_motion => self.hover_feedback.program_highlights(position, screen),
+            _ => false,
+        }
+    }
+
+    /// Mueve el historial de la pestaña o, si el programa de dentro lo ha
+    /// pedido (Claude Code a pantalla completa, vim...), se lo cuenta a él.
+    /// `lines` positivo es hacia arriba; `pointer`, la celda bajo el ratón.
+    pub fn turn_mouse_wheel(&mut self, lines: i32, pointer: GridPosition) {
+        match self.mouse_wheel.turn(lines, pointer, self.emulator.input_modes()) {
+            WheelEffect::ScrollHistory(lines) => self.scroll_history_by(lines),
+            WheelEffect::SendToProgram(bytes) => self.send_to_shell(&bytes),
+            WheelEffect::Nothing => {}
+        }
+    }
+
     fn cursor_is_at_local_prompt(&self) -> bool {
         text_after_local_prompt(&self.emulator.line_at_cursor()).is_some()
     }
@@ -378,8 +466,9 @@ pub fn replay_journal(
 /// La línea, en una fila propia, seguida de los saltos necesarios para que
 /// la pantalla quede vacía y todo lo anterior pase al historial de scroll.
 fn line_pushed_into_history(line: &str, size: TerminalSize) -> Vec<u8> {
-    let mut text = format!("\r\n{line}");
+    let mut text = format!("{MODES_OF_A_NEW_CONSOLE}\r\n{line}");
     text.push_str(&"\r\n".repeat(size.rows as usize));
+    text.push_str("\x1b[H");
     text.into_bytes()
 }
 
@@ -427,6 +516,10 @@ mod tests {
             InputModes::default()
         }
         fn scroll_history_by(&mut self, _lines: i32) {}
+        fn scroll_history_to(&mut self, _lines_scrolled_up: usize) {}
+        fn history_view(&mut self) -> HistoryView {
+            HistoryView::default()
+        }
         fn scroll_to_newest_output(&mut self) {}
         fn line_at_cursor(&self) -> String {
             self.line_at_cursor.borrow().clone()
