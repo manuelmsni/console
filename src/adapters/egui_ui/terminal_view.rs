@@ -70,6 +70,7 @@ impl ConsoleApp {
         // Con el panel de historial o una ventana abierta, el teclado es para ellos.
         let keyboard_goes_to_terminal = response.has_focus() && self.history_picker.is_none() && !self.a_dialog_is_open();
         let history_shortcut = self.app_settings.shortcut(ShortcutAction::OpenCommandHistory);
+        let new_line_shortcut = self.app_settings.new_line_shortcut();
 
         let Some(session) = self.terminal_tabs.active_session_mut() else { return };
         let clipboard = self.clipboard.as_mut();
@@ -90,7 +91,8 @@ impl ConsoleApp {
 
         let mut wants_history_picker = false;
         if keyboard_goes_to_terminal {
-            let keyboard = forward_keyboard_to_terminal(ui, session, clipboard, &history_shortcut);
+            let shortcuts = TerminalShortcuts { history: &history_shortcut, new_line: new_line_shortcut.as_ref() };
+            let keyboard = forward_keyboard_to_terminal(ui, session, clipboard, shortcuts);
             status = keyboard.status.or(status);
             wants_history_picker = keyboard.wants_history_picker;
         }
@@ -269,21 +271,33 @@ struct KeyboardOutcome {
     wants_history_picker: bool,
 }
 
+/// Los atajos que atiende la propia terminal.
+struct TerminalShortcuts<'a> {
+    history: &'a Shortcut,
+    /// `None` si en los ajustes está desactivado.
+    new_line: Option<&'a Shortcut>,
+}
+
 fn forward_keyboard_to_terminal(
     ui: &Ui,
     session: &mut TerminalSession,
     clipboard: &mut dyn Clipboard,
-    history_shortcut: &Shortcut,
+    terminal_shortcuts: TerminalShortcuts,
 ) -> KeyboardOutcome {
     let mut outcome = KeyboardOutcome::default();
     for event in ui.input(|input| input.events.clone()) {
         match event {
             Event::Key { key, pressed: true, modifiers, .. }
-                if shortcuts::is_pressing(key, modifiers, history_shortcut)
+                if shortcuts::is_pressing(key, modifiers, terminal_shortcuts.history)
                     && session.is_at_local_prompt()
                     && !session.command_history().is_empty() =>
             {
                 outcome.wants_history_picker = true;
+            }
+            Event::Key { key, pressed: true, modifiers, .. }
+                if terminal_shortcuts.new_line.is_some_and(|new_line| shortcuts::is_pressing(key, modifiers, new_line)) =>
+            {
+                session.insert_new_line();
             }
             Event::Text(text) => session.send_typed_text(&text),
             // Ctrl+V y Shift+Insert.

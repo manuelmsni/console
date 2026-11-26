@@ -5,6 +5,7 @@ use crate::domain::app_settings::AppSettings;
 use crate::domain::command_library::CommandLibrary;
 use crate::domain::history_scrollbar::HistoryView;
 use crate::domain::local_time::LocalDateTime;
+use crate::domain::macro_bar::MacroBar;
 use crate::domain::screen_snapshot::ScreenSnapshot;
 use crate::domain::shell_profile::ShellProfile;
 use crate::domain::ssh::{LoginCheck, SshAgentStatus, SshDestination, SshKeyInfo, SshKeyName};
@@ -59,6 +60,20 @@ pub trait CommandLibraryStore {
     /// `Ok(None)` si todavía no se ha guardado nunca nada.
     fn load_library(&self) -> Result<Option<CommandLibrary>, String>;
     fn save_library(&self, library: &CommandLibrary) -> Result<(), String>;
+}
+
+/// Guarda y recupera la barra de macros.
+pub trait MacroBarStore {
+    /// `Ok(None)` si todavía no se ha guardado nunca nada.
+    fn load_macro_bar(&self) -> Result<Option<MacroBar>, String>;
+    fn save_macro_bar(&self, bar: &MacroBar) -> Result<(), String>;
+}
+
+/// Ejecuta comandos en el equipo, fuera de las pestañas (la shell del
+/// sistema, sin ventana): abrir carpetas, lanzar programas...
+pub trait SystemCommandRunner {
+    /// Arranca el comando y vuelve enseguida, sin esperar a que termine.
+    fn start(&self, command_line: &str) -> Result<(), String>;
 }
 
 /// Los diarios de las pestañas abiertas, guardados según van ocurriendo las

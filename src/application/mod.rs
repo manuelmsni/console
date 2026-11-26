@@ -3,6 +3,7 @@
 
 pub mod app_settings_service;
 pub mod command_library_service;
+pub mod macro_bar_service;
 pub mod ports;
 pub mod ssh_settings;
 pub mod terminal_session;

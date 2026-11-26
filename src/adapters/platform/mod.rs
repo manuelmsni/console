@@ -7,6 +7,7 @@
 //! | `SystemClock`                               | La hora local (puerto `Clock`).                              |
 //! | `system_display_language()`                 | Código del idioma del sistema, p. ej. `"es-ES"`.             |
 //! | `SystemWebBrowser`                          | Abrir enlaces en el navegador (puerto `WebBrowser`).         |
+//! | `SystemCommandRunner`                       | Ejecutar las macros en el equipo, sin ventana (puerto `SystemCommandRunner`). |
 //! | `SystemUserCipher`                          | Cifrar los ficheros con la cuenta del usuario (sin contraseña). |
 //! | `claim_single_instance(scope)`, `InstanceStartup`, `ShowWindowRequests` | Una sola consola abierta a la vez (por `scope`). |
 //! | `SystemSshTools`                            | Claves, agente y conexiones SSH (puerto `SshTools`).         |

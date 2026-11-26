@@ -30,6 +30,9 @@ struct StoredSettings {
     autosave: StoredAutosave,
     /// Por nombre de acción; las que falten usan su atajo de serie.
     shortcuts: BTreeMap<String, StoredShortcut>,
+    /// Falta en ficheros de versiones anteriores: entonces, encendido.
+    #[serde(default = "new_line_shortcut_is_enabled_by_default")]
+    new_line_shortcut_enabled: bool,
     /// Falta en ficheros de versiones anteriores: entonces, lo de serie.
     #[serde(default)]
     updates: StoredUpdates,
@@ -82,7 +85,13 @@ impl AppSettingsStore for JsonAppSettingsStore {
             check_automatically: stored.updates.check_automatically,
             skipped_version: stored.updates.skipped_version.as_deref().and_then(Version::parse),
         };
-        Ok(Some(AppSettings { language: stored.language, autosave, shortcuts, updates }))
+        Ok(Some(AppSettings {
+            language: stored.language,
+            autosave,
+            shortcuts,
+            new_line_shortcut_enabled: stored.new_line_shortcut_enabled,
+            updates,
+        }))
     }
 
     fn save_settings(&self, settings: &AppSettings) -> Result<(), String> {
@@ -99,6 +108,7 @@ impl AppSettingsStore for JsonAppSettingsStore {
             language: settings.language.clone(),
             autosave: StoredAutosave { enabled: settings.autosave.enabled, interval_seconds: settings.autosave.interval_seconds },
             shortcuts,
+            new_line_shortcut_enabled: settings.new_line_shortcut_enabled,
             updates: StoredUpdates {
                 check_automatically: settings.updates.check_automatically,
                 skipped_version: settings.updates.skipped_version.map(|version| version.to_string()),
@@ -118,5 +128,10 @@ fn stored_name_of(action: ShortcutAction) -> &'static str {
         ShortcutAction::OpenCommandHistory => "historial_de_comandos",
         ShortcutAction::SaveTab => "guardar_pestana",
         ShortcutAction::ToggleTabAutosave => "autoguardado_de_pestana",
+        ShortcutAction::InsertNewLine => "insert_new_line",
     }
+}
+
+fn new_line_shortcut_is_enabled_by_default() -> bool {
+    AppSettings::default().new_line_shortcut_enabled
 }

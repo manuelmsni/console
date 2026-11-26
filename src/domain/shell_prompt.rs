@@ -13,6 +13,14 @@ pub fn text_after_local_prompt(line: &str) -> Option<&str> {
     Some(line[prompt_end + 1..].trim())
 }
 
+/// Si se está escribiendo en PowerShell: en su prompt (`PS C:\...> `) o en
+/// una línea de continuación de un comando de varias líneas (`>> `).
+pub fn is_powershell_input_line(line: &str) -> bool {
+    let is_prompt = line.starts_with("PS ") && text_after_local_prompt(line).is_some();
+    let is_continuation = line.starts_with(">> ") || line == ">>";
+    is_prompt || is_continuation
+}
+
 fn starts_with_drive_path(line: &str) -> bool {
     let mut characters = line.chars();
     matches!(
@@ -39,6 +47,15 @@ mod tests {
     #[test]
     fn redirections_stay_in_the_command() {
         assert_eq!(text_after_local_prompt(r"C:\tmp>dir > lista.txt"), Some("dir > lista.txt"));
+    }
+
+    #[test]
+    fn recognises_where_powershell_is_reading() {
+        assert!(is_powershell_input_line(r"PS C:\Users\yo> Get-ChildItem"));
+        assert!(is_powershell_input_line(">> 'segunda línea'"));
+        assert!(!is_powershell_input_line(r"C:\Users\yo>dir"), "eso es cmd");
+        assert!(!is_powershell_input_line(">>> print(1)"), "eso es Python");
+        assert!(!is_powershell_input_line("> Escribe tu mensaje"));
     }
 
     #[test]

@@ -3,6 +3,7 @@
 //! ```text
 //! ┌───────────────────────────────────────────────────────┐
 //! │ tab_bar: ☰ │ cmd 1 × │ PowerShell 2 × │ ➕  estado ⏻ │
+//! │ macro_bar: 🏠 Inicio │ 📁 Trabajo ▾ │ ➕              │
 //! ├────────────┬──────────────────────────────────────────┤
 //! │ sidebar    │ terminal_view                            │
 //! │ (comandos  │ (se escribe directamente aquí)           │
@@ -10,6 +11,7 @@
 //! └────────────┴──────────────────────────────────────────┘
 //! ```
 //!
+//! La barra de macros y el menú lateral se muestran y ocultan juntos (☰).
 //! Cerrar la ventana la esconde en la bandeja (`window_and_tray`). Al salir de
 //! verdad (⏻) se pregunta qué hacer con las pestañas sin guardar
 //! (`confirmation_dialog`). Los atajos de teclado están en `shortcuts`.
@@ -23,6 +25,9 @@ mod general_tab;
 mod history_picker;
 mod key_mapping;
 mod library_dialog;
+mod macro_bar;
+mod macro_dialog;
+mod macro_icons;
 mod material_widgets;
 mod pointer_cursor;
 mod rename_in_place;
@@ -50,6 +55,7 @@ use eframe::egui::{self, IconData, Rect, ViewportCommand};
 
 use crate::application::app_settings_service::AppSettingsService;
 use crate::application::command_library_service::CommandLibraryService;
+use crate::application::macro_bar_service::MacroBarService;
 use crate::application::ports::{Clipboard, WebBrowser};
 use crate::application::ssh_settings::SshSettings;
 use crate::application::terminal_tabs::TerminalTabs;
@@ -59,6 +65,8 @@ use crate::i18n::{tr, tr_args};
 use confirmation_dialog::Confirmation;
 use history_picker::HistoryPicker;
 use library_dialog::LibraryDialog;
+use macro_bar::MacroMenus;
+use macro_dialog::MacroDialog;
 use rename_in_place::{PendingCommandClick, RenameInPlace};
 use settings_window::SettingsWindow;
 use terminal_scrollbar::TerminalScrollbar;
@@ -83,6 +91,8 @@ pub struct ConsoleApp {
     egui_context: egui::Context,
     terminal_tabs: TerminalTabs,
     command_library: CommandLibraryService,
+    /// La barra de macros: comandos que se ejecutan en el equipo, no en las pestañas.
+    macro_bar: MacroBarService,
     app_settings: AppSettingsService,
     /// Para volver a elegir idioma si en los ajustes se pone "automático".
     system_language: String,
@@ -93,6 +103,7 @@ pub struct ConsoleApp {
     shell_profiles: Vec<ShellProfile>,
     /// Ventana nativa, icono de la bandeja y avisos de "muéstrate".
     desktop: DesktopIntegration,
+    /// El menú lateral y, con él, la barra de macros.
     sidebar_is_visible: bool,
     /// Lo escrito en el filtro del menú lateral.
     command_filter: String,
@@ -100,6 +111,9 @@ pub struct ConsoleApp {
     renaming: Option<RenameInPlace>,
     pending_command_click: Option<PendingCommandClick>,
     library_dialog: Option<LibraryDialog>,
+    macro_dialog: Option<MacroDialog>,
+    /// Carpetas de la barra de macros desplegadas y su menú de clic derecho.
+    macro_menus: MacroMenus,
     settings_window: Option<SettingsWindow>,
     /// Pregunta pendiente antes de perder algo (cerrar pestaña guardada, salir sin guardar).
     confirmation: Option<Confirmation>,
@@ -124,6 +138,7 @@ impl ConsoleApp {
         mut desktop: DesktopIntegration,
         terminal_tabs: TerminalTabs,
         command_library: CommandLibraryService,
+        macro_bar: MacroBarService,
         app_settings: AppSettingsService,
         ssh_settings: SshSettings,
         clipboard: Box<dyn Clipboard>,
@@ -138,6 +153,7 @@ impl ConsoleApp {
             egui_context,
             terminal_tabs,
             command_library,
+            macro_bar,
             app_settings,
             system_language,
             ssh_settings,
@@ -150,6 +166,8 @@ impl ConsoleApp {
             renaming: None,
             pending_command_click: None,
             library_dialog: None,
+            macro_dialog: None,
+            macro_menus: MacroMenus::default(),
             settings_window: None,
             confirmation: None,
             history_picker: None,
@@ -214,6 +232,7 @@ impl ConsoleApp {
     /// Con una ventana encima (ajustes, diálogos), el teclado no debe llegar a la consola.
     fn a_dialog_is_open(&self) -> bool {
         self.library_dialog.is_some()
+            || self.macro_dialog.is_some()
             || self.settings_window.is_some()
             || self.confirmation.is_some()
             || self.update_dialog_is_open()
@@ -287,10 +306,12 @@ impl eframe::App for ConsoleApp {
         // Los paneles laterales se dibujan antes que el central para que este
         // ocupe solo el hueco que queda.
         self.show_tab_bar(egui_context);
+        self.show_macro_bar(egui_context);
         self.show_saved_commands_sidebar(egui_context);
         self.show_active_terminal(egui_context);
         self.show_history_picker(egui_context);
         self.show_library_dialog(egui_context);
+        self.show_macro_dialog(egui_context);
         self.show_settings_window(egui_context);
         self.show_update_dialog(egui_context);
         self.show_confirmation(egui_context);

@@ -49,16 +49,19 @@ pub enum ShortcutAction {
     OpenCommandHistory,
     SaveTab,
     ToggleTabAutosave,
+    /// En la terminal: salto de línea sin ejecutar (si está activado en los ajustes).
+    InsertNewLine,
 }
 
 impl ShortcutAction {
-    pub const ALL: [ShortcutAction; 6] = [
+    pub const ALL: [ShortcutAction; 7] = [
         ShortcutAction::NewTab,
         ShortcutAction::PreviousTab,
         ShortcutAction::NextTab,
         ShortcutAction::OpenCommandHistory,
         ShortcutAction::SaveTab,
         ShortcutAction::ToggleTabAutosave,
+        ShortcutAction::InsertNewLine,
     ];
 
     pub fn description(self) -> String {
@@ -69,6 +72,7 @@ impl ShortcutAction {
             ShortcutAction::OpenCommandHistory => tr("shortcuts.action.command_history"),
             ShortcutAction::SaveTab => tr("shortcuts.action.save_tab"),
             ShortcutAction::ToggleTabAutosave => tr("shortcuts.action.toggle_tab_autosave"),
+            ShortcutAction::InsertNewLine => tr("shortcuts.action.insert_new_line"),
         }
     }
 
@@ -80,6 +84,7 @@ impl ShortcutAction {
             ShortcutAction::OpenCommandHistory => Shortcut::ctrl("ArrowUp"),
             ShortcutAction::SaveTab => Shortcut::ctrl("S"),
             ShortcutAction::ToggleTabAutosave => Shortcut::ctrl_shift("S"),
+            ShortcutAction::InsertNewLine => Shortcut::ctrl("Enter"),
         }
     }
 }
@@ -104,9 +109,10 @@ impl Shortcut {
     }
 
     /// Sin Ctrl ni Alt, la combinación se comería letras al escribir en la
-    /// consola; solo se permiten así las teclas de función (F1-F12).
+    /// consola; solo se permiten así las teclas de función (F1-F12) y, con
+    /// Shift, las que no escriben nada (Shift + Enter...).
     pub fn is_usable_while_typing(&self) -> bool {
-        self.ctrl || self.alt || is_function_key(&self.key)
+        self.ctrl || self.alt || is_function_key(&self.key) || (self.shift && is_key_that_types_nothing(&self.key))
     }
 }
 
@@ -128,6 +134,14 @@ impl fmt::Display for Shortcut {
         };
         formatter.write_str(key)
     }
+}
+
+/// Teclas que, solas o con Shift, no escriben ningún carácter.
+fn is_key_that_types_nothing(key: &str) -> bool {
+    matches!(
+        key,
+        "Enter" | "Backspace" | "Delete" | "Insert" | "Home" | "End" | "PageUp" | "PageDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown"
+    )
 }
 
 fn is_function_key(key: &str) -> bool {
@@ -179,13 +193,28 @@ impl Shortcuts {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppSettings {
     /// Código del idioma de la interfaz (`en`, `es`...). `None`: el de Windows.
     pub language: Option<String>,
     pub autosave: AutosaveSettings,
     pub shortcuts: Shortcuts,
+    /// Si el atajo `InsertNewLine` mete un salto de línea en lugar de
+    /// ejecutar. Apagado, esa combinación llega a la consola como siempre.
+    pub new_line_shortcut_enabled: bool,
     pub updates: UpdateSettings,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            language: None,
+            autosave: AutosaveSettings::default(),
+            shortcuts: Shortcuts::default(),
+            new_line_shortcut_enabled: true,
+            updates: UpdateSettings::default(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -209,6 +238,20 @@ mod tests {
         let mut shortcuts = Shortcuts::default();
         let save = shortcuts.get(ShortcutAction::SaveTab);
         assert_eq!(shortcuts.set(ShortcutAction::NewTab, save), Err(ShortcutError::AlreadyUsedBy(ShortcutAction::SaveTab)));
+    }
+
+    #[test]
+    fn new_line_is_ctrl_enter_by_default_and_can_be_shift_enter() {
+        let mut shortcuts = Shortcuts::default();
+        assert_eq!(shortcuts.get(ShortcutAction::InsertNewLine).to_string(), "Ctrl + Enter");
+        assert!(AppSettings::default().new_line_shortcut_enabled);
+
+        let shift_enter = Shortcut { ctrl: false, shift: true, alt: false, key: "Enter".into() };
+        let shift_letter = Shortcut { ctrl: false, shift: true, alt: false, key: "A".into() };
+        let plain_enter = Shortcut { ctrl: false, shift: false, alt: false, key: "Enter".into() };
+        assert_eq!(shortcuts.set(ShortcutAction::InsertNewLine, shift_enter), Ok(()));
+        assert_eq!(shortcuts.set(ShortcutAction::InsertNewLine, shift_letter), Err(ShortcutError::NeedsCtrlOrAlt));
+        assert_eq!(shortcuts.set(ShortcutAction::InsertNewLine, plain_enter), Err(ShortcutError::NeedsCtrlOrAlt));
     }
 
     #[test]

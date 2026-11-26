@@ -10,6 +10,7 @@ mod openssh_tools;
 mod process;
 mod shell_profiles;
 mod single_instance;
+mod system_commands;
 // La portable cifra con contraseña, no con la cuenta de Windows.
 #[cfg(not(feature = "portable"))]
 mod user_encryption;
@@ -22,6 +23,7 @@ pub use native_window::MainWindow;
 pub use openssh_tools::OpenSshTools as SystemSshTools;
 pub use process::{wait_for_process_to_exit, OPERATING_SYSTEM};
 pub use shell_profiles::available_shell_profiles;
+pub use system_commands::WindowsCommandRunner as SystemCommandRunner;
 pub use single_instance::{claim_single_instance, ShowWindowRequests, Startup as InstanceStartup};
 #[cfg(not(feature = "portable"))]
 pub use user_encryption::WindowsUserCipher as SystemUserCipher;

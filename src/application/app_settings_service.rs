@@ -46,6 +46,16 @@ impl AppSettingsService {
         self.store.save_settings(&self.settings)
     }
 
+    pub fn set_new_line_shortcut_enabled(&mut self, enabled: bool) -> Result<(), String> {
+        self.settings.new_line_shortcut_enabled = enabled;
+        self.store.save_settings(&self.settings)
+    }
+
+    /// El atajo del salto de línea, si está activado.
+    pub fn new_line_shortcut(&self) -> Option<Shortcut> {
+        self.settings.new_line_shortcut_enabled.then(|| self.shortcut(ShortcutAction::InsertNewLine))
+    }
+
     pub fn set_update_settings(&mut self, updates: UpdateSettings) -> Result<(), String> {
         self.settings.updates = updates;
         self.store.save_settings(&self.settings)

@@ -7,6 +7,7 @@ pub mod command_library;
 pub mod history_scrollbar;
 pub mod hover_feedback;
 pub mod local_time;
+pub mod macro_bar;
 #[cfg_attr(not(feature = "portable"), allow(dead_code))]
 pub mod master_password;
 pub mod screen_snapshot;

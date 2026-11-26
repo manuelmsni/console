@@ -83,6 +83,8 @@ impl ConsoleApp {
                 None => {}
             },
             ShortcutAction::OpenCommandHistory => self.open_history_picker(),
+            // Lo atiende la terminal: solo tiene sentido escribiendo en ella.
+            ShortcutAction::InsertNewLine => {}
         }
     }
 }

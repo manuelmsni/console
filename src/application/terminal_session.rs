@@ -10,11 +10,12 @@ use crate::domain::terminal_mouse::{
     encode_click, encode_pointer_motion, program_handles_scrolling, MouseWheel, WheelEffect,
 };
 use crate::domain::screen_snapshot::ScreenSnapshot;
-use crate::domain::shell_prompt::text_after_local_prompt;
+use crate::domain::shell_prompt::{is_powershell_input_line, text_after_local_prompt};
 use crate::domain::tab_journal::{JournalEntry, TabId, TabRecord};
 use crate::domain::terminal_grid::{GridPosition, TerminalSize, TextSelection};
 use crate::domain::terminal_keys::{
-    encode_key_press, encode_paste, encode_prompt_line_replacement, KeyModifiers, TerminalKey,
+    encode_key_press, encode_new_line_without_running, encode_paste, encode_prompt_line_replacement, KeyModifiers, NewLineReader,
+    TerminalKey,
 };
 
 /// Algunos programas (Claude Code, por ejemplo) toman texto + Enter llegados
@@ -288,6 +289,18 @@ impl TerminalSession {
         }
         let bytes = encode_key_press(key, modifiers, self.emulator.input_modes());
         self.send_to_shell(&bytes);
+    }
+
+    /// Salto de línea dentro de lo que se está escribiendo, sin ejecutarlo,
+    /// de la forma que entiende quien lo lee (PowerShell u otro programa).
+    pub fn insert_new_line(&mut self) {
+        self.emulator.scroll_to_newest_output();
+        let reader = if is_powershell_input_line(&self.emulator.line_at_cursor()) {
+            NewLineReader::PowerShell
+        } else {
+            NewLineReader::Other
+        };
+        self.send_to_shell(&encode_new_line_without_running(reader));
     }
 
     /// `true` si el cursor está en el prompt de cmd o PowerShell (y no dentro
@@ -612,6 +625,19 @@ mod tests {
         assert!(terminal.session.is_at_local_prompt());
         terminal.show_line("> Escribe tu mensaje");
         assert!(!terminal.session.is_at_local_prompt());
+    }
+
+    #[test]
+    fn new_line_is_sent_the_way_each_program_understands_it() {
+        let mut terminal = SessionUnderTest::new();
+        terminal.show_line(r"PS C:\Users\yo> 'uno'");
+        terminal.session.insert_new_line();
+        assert_eq!(*terminal.sent_to_shell.borrow(), encode_new_line_without_running(NewLineReader::PowerShell));
+
+        terminal.sent_to_shell.borrow_mut().clear();
+        terminal.show_line("> primera línea del mensaje");
+        terminal.session.insert_new_line();
+        assert_eq!(*terminal.sent_to_shell.borrow(), b"\n");
     }
 
     #[test]

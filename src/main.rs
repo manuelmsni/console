@@ -17,11 +17,12 @@ use adapters::egui_ui::{prepare_look, window_icon, ConsoleApp, DesktopIntegratio
 use adapters::encrypted_tab_journal_store::EncryptedTabJournalStore;
 use adapters::json_app_settings_store::JsonAppSettingsStore;
 use adapters::json_command_library_store::JsonCommandLibraryStore;
+use adapters::json_macro_bar_store::JsonMacroBarStore;
 use adapters::json_ssh_server_store::JsonSshServerStore;
 use adapters::github_releases::GitHubReleases;
 use adapters::platform::{
     available_shell_profiles, claim_single_instance, prepare_terminal_host, system_display_language, wait_for_process_to_exit,
-    InstanceStartup, ShowWindowRequests, SystemClock, SystemSshTools, SystemWebBrowser, OPERATING_SYSTEM,
+    InstanceStartup, ShowWindowRequests, SystemClock, SystemCommandRunner, SystemSshTools, SystemWebBrowser, OPERATING_SYSTEM,
 };
 use adapters::self_replacing_program::{SelfReplacingProgram, AFTER_UPDATE_ARGUMENT};
 use adapters::pty_shell::PtyShellLauncher;
@@ -29,6 +30,7 @@ use adapters::system_clipboard::SystemClipboard;
 use adapters::vt100_emulator::Vt100EmulatorFactory;
 use application::app_settings_service::AppSettingsService;
 use application::command_library_service::CommandLibraryService;
+use application::macro_bar_service::MacroBarService;
 use application::ssh_settings::SshSettings;
 use application::terminal_tabs::{AutosavePolicy, TerminalTabs};
 use application::update_service::UpdateService;
@@ -208,6 +210,8 @@ fn build_console_app(egui_context: egui::Context, desktop: DesktopIntegration, s
         AutosavePolicy::from_settings(&app_settings.settings().autosave),
     );
     let (command_library, startup_warning) = CommandLibraryService::load(Box::new(JsonCommandLibraryStore::in_folder(&data)));
+    let (macro_bar, macro_warning) =
+        MacroBarService::load(Box::new(JsonMacroBarStore::in_folder(&data)), Box::new(SystemCommandRunner));
     let (ssh_settings, ssh_warning) =
         SshSettings::load(Arc::new(SystemSshTools::for_current_user()), Box::new(JsonSshServerStore::in_folder(&data)));
 
@@ -216,6 +220,7 @@ fn build_console_app(egui_context: egui::Context, desktop: DesktopIntegration, s
         desktop,
         terminal_tabs,
         command_library,
+        macro_bar,
         app_settings,
         ssh_settings,
         Box::new(SystemClipboard),
@@ -223,6 +228,6 @@ fn build_console_app(egui_context: egui::Context, desktop: DesktopIntegration, s
         available_shell_profiles(),
         update_service(),
         system_language,
-        startup_warning.or(settings_warning).or(ssh_warning),
+        startup_warning.or(settings_warning).or(macro_warning).or(ssh_warning),
     )
 }

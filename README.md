@@ -13,6 +13,10 @@ captures the mouse.
   - `▶` runs a command; clicking its name types it without running it, so you can edit it.
   - Drag and drop to reorder or move into folders; double-click a name to rename it.
   - Filter by name or command text; folders remember whether they were open or folded.
+- **Macros bar** under the tabs (shown and hidden with the side panel button): buttons that run
+  commands on your computer, outside the tabs — open a folder in Explorer, launch a program, open
+  a web page... Give them a name and an icon, and group them in drop-down folders, like browser
+  bookmarks. Drag them to reorder or move them into folders; right-click to edit or delete.
 - **Saved tabs**: `Ctrl + S` saves a tab (its screen, with colours, and its command history).
   Saved tabs come back the next time you open the app, even after a crash. Autosave can be
   turned on for every tab (Settings → General) or just for one (`Ctrl + Shift + S`).
@@ -33,6 +37,8 @@ captures the mouse.
 - **SSH key helper** (Settings → SSH keys): enable the Windows SSH agent, create keys with a
   passphrase and install them on your servers to log in without typing passwords.
 - **Configurable shortcuts** (Settings → Shortcuts).
+- **Multi-line input**: `Ctrl + Enter` adds a line break instead of running what you typed
+  (PowerShell, Claude Code...). It can be turned off or changed in Settings → Shortcuts.
 - **Languages**: English, Spanish and French, following Windows by default.
 - **Updates**: when a new version is published, a small button appears next to the window
   controls. Nothing is downloaded until you accept; the download is checked against its
@@ -76,7 +82,8 @@ password you choose the first time you open it.
 | File | Contents |
 |---|---|
 | `commands.json` | Saved commands |
-| `settings.json` | Language, autosave and keyboard shortcuts |
+| `macros.json` | Macros bar |
+| `settings.json` | Language, autosave, keyboard shortcuts and line breaks |
 | `ssh_servers.json` | SSH server list |
 | `tabs\index.json` | Saved tabs and their order |
 | `tabs\<id>.journal` | What happened in each saved tab (compacted above 4 MB) |

@@ -98,6 +98,32 @@ pub fn encode_paste(text: &str, modes: InputModes) -> Vec<u8> {
     }
 }
 
+/// Dónde se quiere el salto de línea: cada programa lo entiende de una forma.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NewLineReader {
+    /// PowerShell (PSReadLine): Shift+Enter añade una línea debajo. El LF le
+    /// llega como Ctrl+Enter, que la añadiría encima.
+    PowerShell,
+    /// Los demás (Claude Code...): el carácter LF, como Ctrl+J.
+    Other,
+}
+
+/// Salto de línea sin ejecutar lo escrito (Enter, `\r`, lo ejecutaría).
+pub fn encode_new_line_without_running(reader: NewLineReader) -> Vec<u8> {
+    match reader {
+        NewLineReader::PowerShell => {
+            // Shift+Enter tal cual lo pulsaría un teclado de Windows, en el
+            // formato "win32-input-mode" que entiende la ConPTY:
+            // ESC [ tecla ; código de escaneo ; carácter ; pulsada ; modificadores ; repeticiones _
+            let (enter_key, enter_scan_code, shift_pressed) = (13, 28, 0x10);
+            let press = format!("\x1b[{enter_key};{enter_scan_code};13;1;{shift_pressed};1_");
+            let release = format!("\x1b[{enter_key};{enter_scan_code};13;0;{shift_pressed};1_");
+            format!("{press}{release}").into_bytes()
+        }
+        NewLineReader::Other => b"\n".to_vec(),
+    }
+}
+
 /// Sustituye lo escrito en el prompt por otro texto: Fin lleva el cursor al
 /// final y Ctrl+Inicio borra todo lo que hay a su izquierda (así funciona
 /// tanto en cmd como en PowerShell). No se usa Esc porque, seguido de texto,
@@ -181,6 +207,19 @@ mod tests {
         let ctrl = KeyModifiers { ctrl: true, ..KeyModifiers::NONE };
         let bytes = encode_key_press(TerminalKey::ArrowLeft, ctrl, InputModes::default());
         assert_eq!(bytes, b"\x1b[1;5D");
+    }
+
+    #[test]
+    fn new_line_is_not_the_enter_byte() {
+        let enter = encode_key_press(TerminalKey::Enter, KeyModifiers::NONE, InputModes::default());
+        assert_eq!(encode_new_line_without_running(NewLineReader::Other), b"\n");
+        assert_ne!(encode_new_line_without_running(NewLineReader::Other), enter);
+    }
+
+    #[test]
+    fn powershell_gets_shift_enter_pressed_and_released() {
+        let bytes = encode_new_line_without_running(NewLineReader::PowerShell);
+        assert_eq!(bytes, b"\x1b[13;28;13;1;16;1_\x1b[13;28;13;0;16;1_");
     }
 
     #[test]

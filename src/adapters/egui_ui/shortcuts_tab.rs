@@ -1,7 +1,7 @@
 //! Pestaña "Atajos" de los ajustes: cambiar la combinación de cada acción
 //! pulsándola.
 
-use eframe::egui::{vec2, Align, Button, Event, Key, Layout, RichText, Ui};
+use eframe::egui::{vec2, Align, Button, Checkbox, Event, Key, Layout, RichText, Ui};
 
 use super::material_widgets::text_button;
 use super::settings_window::{card, section_header};
@@ -9,7 +9,7 @@ use super::shortcuts::shortcut_from;
 use super::theme::palette;
 use super::ConsoleApp;
 use crate::domain::app_settings::{AppSettings, Shortcut, ShortcutAction};
-use crate::i18n::tr;
+use crate::i18n::{tr, tr_args};
 
 #[derive(Default)]
 pub(super) struct ShortcutsTabState {
@@ -20,6 +20,7 @@ pub(super) struct ShortcutsTabState {
 
 pub(super) enum ShortcutsAction {
     Set(ShortcutAction, Shortcut),
+    SetNewLineEnabled(bool),
     RestoreDefaults,
 }
 
@@ -75,11 +76,28 @@ impl ShortcutsTabState {
         if let Some(problem) = &self.problem {
             ui.label(RichText::new(problem).color(palette::ERROR));
         }
+        ui.add_space(12.0);
+        show_new_line_option(ui, settings, &mut actions);
         ui.add_space(8.0);
         if text_button(ui, &tr("settings.shortcuts.restore_defaults")).clicked() {
             actions.push(ShortcutsAction::RestoreDefaults);
         }
         actions
+    }
+}
+
+/// Si el atajo del salto de línea lo hace o la combinación llega a la consola como siempre.
+fn show_new_line_option(ui: &mut Ui, settings: &AppSettings, actions: &mut Vec<ShortcutsAction>) {
+    let shortcut = settings.shortcuts.get(ShortcutAction::InsertNewLine);
+    let mut enabled = settings.new_line_shortcut_enabled;
+    card(ui, |ui| {
+        ui.add(Checkbox::new(&mut enabled, tr_args("settings.shortcuts.new_line", &[("shortcut", &shortcut)])));
+        ui.label(
+            RichText::new(tr("settings.shortcuts.new_line_explanation")).small().color(palette::ON_SURFACE_VARIANT),
+        );
+    });
+    if enabled != settings.new_line_shortcut_enabled {
+        actions.push(ShortcutsAction::SetNewLineEnabled(enabled));
     }
 }
 
@@ -102,6 +120,7 @@ impl ConsoleApp {
         for action in actions {
             let result = match action {
                 ShortcutsAction::Set(action, shortcut) => self.app_settings.set_shortcut(action, shortcut),
+                ShortcutsAction::SetNewLineEnabled(enabled) => self.app_settings.set_new_line_shortcut_enabled(enabled),
                 ShortcutsAction::RestoreDefaults => self.app_settings.restore_default_shortcuts(),
             };
             if let Some(settings) = &mut self.settings_window {
