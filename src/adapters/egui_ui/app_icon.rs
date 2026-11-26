@@ -1,9 +1,13 @@
-//! Icono de la aplicación (barra de tareas y bandeja), dibujado por código:
-//! un cuadrado redondeado con ">_" en los colores del tema.
+//! Icono de la aplicación (barra de tareas, bandeja y el propio `.exe`),
+//! dibujado por código: un cuadrado redondeado con ">_" en los colores del tema.
+//!
+//! No depende de nada más del programa porque `build.rs` también lo usa, para
+//! meter el icono en el ejecutable.
 
-use eframe::egui::Color32;
-
-use super::theme::palette;
+/// Fondo del icono (`palette::PRIMARY`; un test comprueba que coinciden).
+const BACKGROUND_RGB: [u8; 3] = [0xD0, 0xBC, 0xFF];
+/// Color de ">_" (`palette::ON_PRIMARY`).
+const SYMBOL_RGB: [u8; 3] = [0x38, 0x1E, 0x72];
 
 /// Radio de las esquinas, como fracción del lado.
 const CORNER_RADIUS: f32 = 0.22;
@@ -18,8 +22,8 @@ pub fn app_icon_rgba(size: u32) -> Vec<u8> {
     for y in 0..size {
         for x in 0..size {
             let (shape_coverage, symbol_coverage) = coverage_of_pixel(x, y, size);
-            let color = mix(palette::PRIMARY, palette::ON_PRIMARY, symbol_coverage);
-            rgba.extend([color.r(), color.g(), color.b(), (shape_coverage * 255.0) as u8]);
+            let [red, green, blue] = mix(BACKGROUND_RGB, SYMBOL_RGB, symbol_coverage);
+            rgba.extend([red, green, blue, (shape_coverage * 255.0) as u8]);
         }
     }
     rgba
@@ -73,7 +77,30 @@ fn distance_to_segment(point: (f32, f32), start: (f32, f32), end: (f32, f32)) ->
     ((point.0 - closest.0).powi(2) + (point.1 - closest.1).powi(2)).sqrt()
 }
 
-fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
+fn mix(from: [u8; 3], to: [u8; 3], amount: f32) -> [u8; 3] {
     let channel = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * amount).round() as u8;
-    Color32::from_rgb(channel(from.r(), to.r()), channel(from.g(), to.g()), channel(from.b(), to.b()))
+    [channel(from[0], to[0]), channel(from[1], to[1]), channel(from[2], to[2])]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::adapters::egui_ui::theme::palette;
+
+    #[test]
+    fn icon_colors_match_the_theme() {
+        let rgb = |color: eframe::egui::Color32| [color.r(), color.g(), color.b()];
+        assert_eq!(BACKGROUND_RGB, rgb(palette::PRIMARY));
+        assert_eq!(SYMBOL_RGB, rgb(palette::ON_PRIMARY));
+    }
+
+    #[test]
+    fn corners_are_transparent_and_center_is_opaque() {
+        let size = 32;
+        let rgba = app_icon_rgba(size);
+        assert_eq!(rgba.len(), (size * size * 4) as usize);
+        assert_eq!(rgba[3], 0);
+        let center = ((size / 2 * size + size / 2) * 4) as usize;
+        assert_eq!(rgba[center + 3], 255);
+    }
 }
