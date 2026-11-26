@@ -4,6 +4,7 @@
 
 mod bundled_conpty;
 mod clock;
+mod explorer_menu;
 mod language;
 mod native_window;
 mod openssh_tools;
@@ -18,13 +19,14 @@ mod web_browser;
 
 pub use bundled_conpty::use_bundled_conpty as prepare_terminal_host;
 pub use clock::WindowsClock as SystemClock;
+pub use explorer_menu::ExplorerFolderMenu as SystemFolderContextMenu;
 pub use language::windows_display_language as system_display_language;
 pub use native_window::MainWindow;
 pub use openssh_tools::OpenSshTools as SystemSshTools;
 pub use process::{wait_for_process_to_exit, OPERATING_SYSTEM};
 pub use shell_profiles::available_shell_profiles;
 pub use system_commands::WindowsCommandRunner as SystemCommandRunner;
-pub use single_instance::{claim_single_instance, ShowWindowRequests, Startup as InstanceStartup};
+pub use single_instance::{claim_single_instance, LaunchRequests, Startup as InstanceStartup};
 #[cfg(not(feature = "portable"))]
 pub use user_encryption::WindowsUserCipher as SystemUserCipher;
 pub use web_browser::WindowsWebBrowser as SystemWebBrowser;

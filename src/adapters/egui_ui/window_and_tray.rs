@@ -3,21 +3,21 @@
 //! sale de verdad.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use eframe::egui;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 use super::app_icon::app_icon_rgba;
-use crate::adapters::platform::{MainWindow, ShowWindowRequests};
+use crate::adapters::platform::{LaunchRequests, MainWindow};
 use crate::i18n::{tr, tr_args};
 
 const TRAY_ICON_SIZE: u32 = 32;
 
 /// Lo que une la ventana al escritorio: la ventana nativa (para esconderla y
-/// volver a mostrarla), el icono de la bandeja y los avisos de "muéstrate"
-/// cuando se lanza el programa otra vez. Se prepara al crear la ventana, antes
+/// volver a mostrarla), el icono de la bandeja y lo que se pide al lanzar el
+/// programa otra vez (mostrarse o abrir una pestaña en una carpeta). Se prepara al crear la ventana, antes
 /// que la consola, para que también funcione en la pantalla de contraseña de
 /// la portable.
 pub struct DesktopIntegration {
@@ -25,18 +25,35 @@ pub struct DesktopIntegration {
     system_tray: Option<SystemTray>,
     /// Por qué no hay icono en la bandeja, si no se pudo crear.
     problem: Option<String>,
+    /// Carpetas en las que se ha pedido abrir una pestaña ("Abrir Console
+    /// aquí") y que la consola aún no ha recogido.
+    folders_to_open: Arc<Mutex<Vec<String>>>,
 }
 
 impl DesktopIntegration {
-    pub fn connect(creation_context: &eframe::CreationContext, show_window_requests: Option<ShowWindowRequests>) -> Self {
+    /// `folder_at_launch`: la carpeta con la que se ha lanzado este programa, si trae una.
+    pub fn connect(
+        creation_context: &eframe::CreationContext,
+        launch_requests: Option<LaunchRequests>,
+        folder_at_launch: Option<String>,
+    ) -> Self {
         let egui_context = creation_context.egui_ctx.clone();
         let main_window = MainWindow::of(creation_context);
+        let folders_to_open = Arc::new(Mutex::new(folder_at_launch.into_iter().collect::<Vec<_>>()));
         // Si se lanza el programa otra vez, se muestra esta ventana en vez de abrir otra.
-        if let (Some(requests), Some(window)) = (show_window_requests, main_window) {
+        if let (Some(requests), Some(window)) = (launch_requests, main_window) {
             let context_to_wake_up = egui_context.clone();
-            requests.answer_with(move || {
+            let show_window = move || {
                 window.show();
                 context_to_wake_up.request_repaint();
+            };
+            let show_window_too = show_window.clone();
+            let folders = folders_to_open.clone();
+            requests.answer_with(show_window, move |folder| {
+                if let Ok(mut folders) = folders.lock() {
+                    folders.push(folder);
+                }
+                show_window_too();
             });
         }
         let (system_tray, problem) = match main_window.map(|window| SystemTray::create(window, egui_context)) {
@@ -44,7 +61,12 @@ impl DesktopIntegration {
             Some(Err(error)) => (None, Some(error)),
             None => (None, None),
         };
-        Self { main_window, system_tray, problem }
+        Self { main_window, system_tray, problem, folders_to_open }
+    }
+
+    /// Las carpetas pedidas desde la última vez, en orden.
+    pub fn take_folders_to_open(&self) -> Vec<String> {
+        self.folders_to_open.lock().map(|mut folders| std::mem::take(&mut *folders)).unwrap_or_default()
     }
 
     /// Esconde la ventana en la bandeja. `false` si no hay icono en la

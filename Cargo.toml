@@ -24,10 +24,12 @@ zeroize = "1.8.1"
 # Buscar y descargar actualizaciones en las releases de GitHub.
 ureq = "2.10.1"
 sha2 = "0.10.8"
+# El cuadro del sistema para elegir una carpeta (pestañas nuevas).
+rfd = "0.18.0"
 
 # Solo para Windows: el resto de dependencias sirven en cualquier sistema.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_LibraryLoader", "Win32_System_Services", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_Services", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 # `cargo build --release --features portable`: guarda todo junto al programa,

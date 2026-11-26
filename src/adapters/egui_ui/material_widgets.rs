@@ -471,6 +471,18 @@ pub fn menu_row_with_color(ui: &mut Ui, icon: &str, label: &str, color: Color32)
     response
 }
 
+/// Opción de un menú que despliega otro al pasar el ratón (con `›` a la derecha).
+pub fn menu_row_with_submenu(ui: &mut Ui, icon: &str, label: &str, submenu_is_open: bool) -> Response {
+    let response = menu_row(ui, icon, label);
+    let painter = ui.painter();
+    if submenu_is_open && !response.hovered() {
+        painter.rect_filled(response.rect, Rounding::same(8.0), state_layer(false));
+    }
+    let chevron_position = pos2(response.rect.right() - 16.0, response.rect.center().y);
+    painter.text(chevron_position, Align2::CENTER_CENTER, ICON_CHEVRON_RIGHT, FontId::proportional(ICON_SIZE), palette::ON_SURFACE_VARIANT);
+    response
+}
+
 /// Botón principal de un diálogo (Guardar, Eliminar...).
 pub fn filled_button(ui: &mut Ui, label: &str) -> Response {
     ui.add(

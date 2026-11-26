@@ -12,6 +12,8 @@
 //! ```
 //!
 //! La barra de macros y el menú lateral se muestran y ocultan juntos (☰).
+//! Las pestañas nuevas se abren con la terminal y en la carpeta de los ajustes,
+//! o preguntando (`new_tab_dialog`); también desde "Abrir Console aquí".
 //! Cerrar la ventana la esconde en la bandeja (`window_and_tray`). Al salir de
 //! verdad (⏻) se pregunta qué hacer con las pestañas sin guardar
 //! (`confirmation_dialog`). Los atajos de teclado están en `shortcuts`.
@@ -20,6 +22,7 @@ mod app_icon;
 mod colors;
 mod confirmation_dialog;
 mod dialog_backdrop;
+mod folder_picker;
 mod fonts;
 mod general_tab;
 mod history_picker;
@@ -29,6 +32,8 @@ mod macro_bar;
 mod macro_dialog;
 mod macro_icons;
 mod material_widgets;
+mod new_tab_dialog;
+mod places_tab;
 mod pointer_cursor;
 mod rename_in_place;
 #[cfg(feature = "portable")]
@@ -49,6 +54,7 @@ mod updates;
 mod window_and_tray;
 mod window_frame;
 
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, IconData, Rect, ViewportCommand};
@@ -56,17 +62,21 @@ use eframe::egui::{self, IconData, Rect, ViewportCommand};
 use crate::application::app_settings_service::AppSettingsService;
 use crate::application::command_library_service::CommandLibraryService;
 use crate::application::macro_bar_service::MacroBarService;
-use crate::application::ports::{Clipboard, WebBrowser};
+use crate::application::saved_places_service::SavedPlacesService;
+use crate::application::ports::{Clipboard, FolderContextMenu, WebBrowser};
 use crate::application::ssh_settings::SshSettings;
 use crate::application::terminal_tabs::TerminalTabs;
 use crate::application::update_service::UpdateService;
 use crate::domain::shell_profile::ShellProfile;
+use crate::domain::saved_places::{ssh_command_line, PlaceId, PlaceTarget};
+use crate::domain::startup::{NewTabPlan, PlannedFolder};
 use crate::i18n::{tr, tr_args};
 use confirmation_dialog::Confirmation;
 use history_picker::HistoryPicker;
 use library_dialog::LibraryDialog;
 use macro_bar::MacroMenus;
 use macro_dialog::MacroDialog;
+use new_tab_dialog::NewTabDialog;
 use rename_in_place::{PendingCommandClick, RenameInPlace};
 use settings_window::SettingsWindow;
 use terminal_scrollbar::TerminalScrollbar;
@@ -93,6 +103,8 @@ pub struct ConsoleApp {
     command_library: CommandLibraryService,
     /// La barra de macros: comandos que se ejecutan en el equipo, no en las pestañas.
     macro_bar: MacroBarService,
+    /// Carpetas y servidores SSH de cada terminal, para el menú ➕.
+    saved_places: SavedPlacesService,
     app_settings: AppSettingsService,
     /// Para volver a elegir idioma si en los ajustes se pone "automático".
     system_language: String,
@@ -101,6 +113,19 @@ pub struct ConsoleApp {
     /// Para abrir con Ctrl + clic los enlaces que salen en la terminal.
     web_browser: Box<dyn WebBrowser>,
     shell_profiles: Vec<ShellProfile>,
+    /// "Abrir Console aquí" en el Explorador. `None` si no se puede poner.
+    folder_context_menu: Option<Box<dyn FolderContextMenu>>,
+    /// Si está puesto, para no preguntar al sistema en cada fotograma.
+    folder_context_menu_is_enabled: bool,
+    /// La carpeta elegida al abrir la app, si se preguntó: vale para las
+    /// pestañas nuevas de esta vez.
+    folder_chosen_at_start: Option<String>,
+    /// Pregunta pendiente: terminal y/o carpeta de una pestaña nueva.
+    new_tab_dialog: Option<NewTabDialog>,
+    /// Carpetas de "Abrir Console aquí" que esperan a que se cierre la pregunta anterior.
+    folders_waiting: VecDeque<String>,
+    /// En el menú ➕, la terminal cuyas rutas guardadas se están mostrando.
+    new_tab_submenu: Option<usize>,
     /// Ventana nativa, icono de la bandeja y avisos de "muéstrate".
     desktop: DesktopIntegration,
     /// El menú lateral y, con él, la barra de macros.
@@ -139,27 +164,37 @@ impl ConsoleApp {
         terminal_tabs: TerminalTabs,
         command_library: CommandLibraryService,
         macro_bar: MacroBarService,
+        saved_places: SavedPlacesService,
         app_settings: AppSettingsService,
         ssh_settings: SshSettings,
         clipboard: Box<dyn Clipboard>,
         web_browser: Box<dyn WebBrowser>,
+        folder_context_menu: Option<Box<dyn FolderContextMenu>>,
         shell_profiles: Vec<ShellProfile>,
         update_service: Option<UpdateService>,
         system_language: String,
         startup_warning: Option<String>,
     ) -> Self {
         let tray_problem = desktop.take_problem();
+        let folder_context_menu_is_enabled = folder_context_menu.as_ref().is_some_and(|menu| menu.is_enabled());
         let mut app = Self {
             egui_context,
             terminal_tabs,
             command_library,
             macro_bar,
+            saved_places,
             app_settings,
             system_language,
             ssh_settings,
             clipboard,
             web_browser,
             shell_profiles,
+            folder_context_menu,
+            folder_context_menu_is_enabled,
+            folder_chosen_at_start: None,
+            new_tab_dialog: None,
+            folders_waiting: VecDeque::new(),
+            new_tab_submenu: None,
             desktop,
             sidebar_is_visible: true,
             command_filter: String::new(),
@@ -184,8 +219,11 @@ impl ConsoleApp {
         app
     }
 
+    /// Las pestañas guardadas vuelven; si se ha lanzado con una carpeta, se
+    /// abre además una pestaña allí; si no hay ninguna, la de inicio.
     fn reopen_previous_tabs_or_open_a_new_one(&mut self) {
-        match self.terminal_tabs.reopen_tabs_from_journals(&self.shell_profiles) {
+        let folder_for_reopened_tabs = self.app_settings.settings().start.folder_for_new_tabs(None);
+        match self.terminal_tabs.reopen_tabs_from_journals(&self.shell_profiles, folder_for_reopened_tabs.as_deref()) {
             Ok(0) => {}
             Ok(1) => {
                 self.show_status(tr("tabs.reopened_one"));
@@ -197,18 +235,104 @@ impl ConsoleApp {
             }
             Err(error) => self.show_status(error),
         }
-        if self.terminal_tabs.is_empty() {
-            if let Some(default_profile) = self.shell_profiles.first().cloned() {
-                self.open_tab_with(&default_profile);
+        self.folders_waiting.extend(self.desktop.take_folders_to_open());
+        if self.folders_waiting.is_empty() && self.terminal_tabs.is_empty() {
+            let plan = NewTabPlan::at_app_start(&self.app_settings.settings().start, &self.shell_profiles);
+            self.follow_new_tab_plan(plan, true);
+        }
+        self.open_next_folder_waiting();
+    }
+
+    /// "Abrir Console aquí": una pestaña en cada carpeta pedida, de una en una
+    /// si hay que preguntar la terminal.
+    fn open_next_folder_waiting(&mut self) {
+        self.folders_waiting.extend(self.desktop.take_folders_to_open());
+        while self.new_tab_dialog.is_none() {
+            let Some(folder) = self.folders_waiting.pop_front() else { break };
+            let plan = NewTabPlan::in_folder(folder, &self.app_settings.settings().start, &self.shell_profiles);
+            self.follow_new_tab_plan(plan, false);
+        }
+    }
+
+    /// Abre la pestaña o, si falta algo por decidir, pregunta.
+    /// `is_app_start`: la carpeta que se elija valdrá para las pestañas nuevas de esta vez.
+    fn follow_new_tab_plan(&mut self, plan: NewTabPlan, is_app_start: bool) {
+        if plan.needs_asking() {
+            let marked = self.app_settings.settings().start.shell.resolve_without_asking(&self.shell_profiles).cloned();
+            self.new_tab_dialog = Some(NewTabDialog::from_plan(plan, &self.shell_profiles, marked.as_ref(), is_app_start));
+            return;
+        }
+        let Some(profile) = plan.shell else { return };
+        let folder = match plan.folder {
+            PlannedFolder::Known(folder) => Some(folder),
+            PlannedFolder::Home | PlannedFolder::Ask => None,
+        };
+        self.open_tab_in(&profile, folder.as_deref());
+    }
+
+    /// Una pestaña nueva con el atajo: con la terminal de los ajustes (o preguntando).
+    fn open_new_tab_as_configured(&mut self) {
+        let start = &self.app_settings.settings().start;
+        let plan = NewTabPlan::new_tab(start, &self.shell_profiles, self.folder_chosen_at_start.as_deref());
+        self.follow_new_tab_plan(plan, false);
+    }
+
+    /// Una pestaña de esa terminal en la carpeta de las pestañas nuevas.
+    fn open_tab_with(&mut self, profile: &ShellProfile) {
+        let folder = self.folder_for_new_tabs();
+        self.open_tab_in(profile, folder.as_deref());
+    }
+
+    /// `false` si no se pudo abrir (ya se ha avisado).
+    fn open_tab_in(&mut self, profile: &ShellProfile, folder: Option<&str>) -> bool {
+        match self.terminal_tabs.open_tab(profile, folder) {
+            Ok(()) => {
+                self.terminal_should_take_focus = true;
+                true
+            }
+            Err(error) => {
+                self.show_status(error);
+                false
             }
         }
     }
 
-    fn open_tab_with(&mut self, profile: &ShellProfile) {
-        match self.terminal_tabs.open_tab(profile) {
-            Ok(()) => self.terminal_should_take_focus = true,
-            Err(error) => self.show_status(error),
+    /// Una pestaña de esa terminal en una ruta guardada: en la carpeta, o
+    /// entrando por SSH en el servidor (y su carpeta), y con su comando
+    /// lanzado allí si tiene. Se llama como la ruta.
+    fn open_place(&mut self, profile: &ShellProfile, place_id: PlaceId) {
+        let Some(place) = self.saved_places.places().find(place_id).cloned() else { return };
+        let opened = match &place.target {
+            PlaceTarget::LocalFolder(folder) => {
+                if !std::path::Path::new(folder).is_dir() {
+                    self.show_status(tr_args("new_tab.error.no_such_folder", &[("folder", folder)]));
+                    return;
+                }
+                let opened = self.open_tab_in(profile, Some(folder));
+                if let (true, Some(command)) = (opened, &place.command) {
+                    self.run_in_active_terminal(command);
+                }
+                opened
+            }
+            PlaceTarget::Ssh { destination, port, remote_folder } => {
+                let command = ssh_command_line(profile, destination, *port, remote_folder.as_ref(), place.command.as_deref());
+                let folder = self.folder_for_new_tabs();
+                let opened = self.open_tab_in(profile, folder.as_deref());
+                if opened {
+                    self.run_in_active_terminal(&command);
+                }
+                opened
+            }
+        };
+        if opened {
+            if let Some(tab) = self.terminal_tabs.active_index().and_then(|index| self.terminal_tabs.tab_id(index)) {
+                let _ = self.terminal_tabs.rename_tab(tab, &place.tab_title());
+            }
         }
+    }
+
+    fn folder_for_new_tabs(&self) -> Option<String> {
+        self.app_settings.settings().start.folder_for_new_tabs(self.folder_chosen_at_start.as_deref())
     }
 
     fn run_in_active_terminal(&mut self, command_line: &str) {
@@ -222,8 +346,10 @@ impl ConsoleApp {
     /// Abre una pestaña de la terminal principal y ejecuta en ella el comando
     /// (por ejemplo, un `ssh`).
     fn open_tab_running(&mut self, command_line: &str) {
-        let Some(profile) = self.shell_profiles.first().cloned() else { return };
-        match self.terminal_tabs.open_tab(&profile) {
+        let start = &self.app_settings.settings().start;
+        let Some(profile) = start.shell.resolve_without_asking(&self.shell_profiles).cloned() else { return };
+        let folder = self.folder_for_new_tabs();
+        match self.terminal_tabs.open_tab(&profile, folder.as_deref()) {
             Ok(()) => self.run_in_active_terminal(command_line),
             Err(error) => self.show_status(error),
         }
@@ -235,6 +361,7 @@ impl ConsoleApp {
             || self.macro_dialog.is_some()
             || self.settings_window.is_some()
             || self.confirmation.is_some()
+            || self.new_tab_dialog.is_some()
             || self.update_dialog_is_open()
     }
 
@@ -298,6 +425,7 @@ impl eframe::App for ConsoleApp {
             return;
         }
 
+        self.open_next_folder_waiting();
         self.keep_updates_going(egui_context);
         self.type_pending_command_when_due(egui_context);
         self.handle_history_picker_keys(egui_context);
@@ -314,6 +442,7 @@ impl eframe::App for ConsoleApp {
         self.show_macro_dialog(egui_context);
         self.show_settings_window(egui_context);
         self.show_update_dialog(egui_context);
+        self.show_new_tab_dialog(egui_context);
         self.show_confirmation(egui_context);
         // Al final, cuando ya se sabe qué hay bajo el ratón. Los bordes, lo
         // último: el cursor de estirar gana al de lo que haya debajo.

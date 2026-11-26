@@ -9,7 +9,8 @@
 //! | `SystemWebBrowser`                          | Abrir enlaces en el navegador (puerto `WebBrowser`).         |
 //! | `SystemCommandRunner`                       | Ejecutar las macros en el equipo, sin ventana (puerto `SystemCommandRunner`). |
 //! | `SystemUserCipher`                          | Cifrar los ficheros con la cuenta del usuario (sin contraseña). |
-//! | `claim_single_instance(scope)`, `InstanceStartup`, `ShowWindowRequests` | Una sola consola abierta a la vez (por `scope`). |
+//! | `claim_single_instance(scope, folder)`, `InstanceStartup`, `LaunchRequests` | Una sola consola abierta a la vez (por `scope`); lanzarla otra vez la muestra o le hace abrir una pestaña en `folder`. |
+//! | `SystemFolderContextMenu`                   | "Abrir Console aquí" en el menú de las carpetas (puerto `FolderContextMenu`). |
 //! | `SystemSshTools`                            | Claves, agente y conexiones SSH (puerto `SshTools`).         |
 //! | `MainWindow`                                | Esconder y volver a mostrar la ventana (bandeja del sistema). |
 //! | `available_shell_profiles()`                | Terminales que se pueden abrir; la primera es la principal.  |

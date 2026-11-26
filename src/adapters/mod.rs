@@ -6,6 +6,7 @@ pub mod encrypted_tab_journal_store;
 pub mod json_app_settings_store;
 pub mod json_command_library_store;
 pub mod json_macro_bar_store;
+pub mod json_saved_places_store;
 pub mod data_folder;
 pub mod file_cipher;
 pub mod github_releases;

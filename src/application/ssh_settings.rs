@@ -36,6 +36,8 @@ pub struct SshSettings {
     server_store: Box<dyn SshServerStore>,
     keys: Vec<SshKeyInfo>,
     servers: Vec<SshDestination>,
+    /// Los de `~/.ssh/config`, para sugerirlos.
+    configured_hosts: Vec<SshDestination>,
     /// Se rellenan desde hilos aparte, porque comprobar y activar tarda.
     connection_checks: Arc<Mutex<HashMap<SshDestination, ConnectionCheck>>>,
     agent_state: Arc<Mutex<AgentState>>,
@@ -54,6 +56,7 @@ impl SshSettings {
             server_store,
             keys: Vec::new(),
             servers,
+            configured_hosts: Vec::new(),
             connection_checks: Arc::default(),
             agent_state: Arc::new(Mutex::new(agent_state)),
         };
@@ -74,8 +77,21 @@ impl SshSettings {
         if self.agent_state() != AgentState::Activating {
             set_shared(&self.agent_state, AgentState::Known(self.tools.agent_status()));
         }
+        self.configured_hosts = self.tools.configured_hosts();
         self.keys = self.tools.list_keys()?;
         Ok(())
+    }
+
+    /// Para sugerir al escribir un servidor: los de la lista y los de
+    /// `~/.ssh/config`, sin repetir.
+    pub fn known_destinations(&self) -> Vec<SshDestination> {
+        let mut known = self.servers.clone();
+        for host in &self.configured_hosts {
+            if !known.contains(host) {
+                known.push(host.clone());
+            }
+        }
+        known
     }
 
     /// Comando que crea la clave; la frase de paso se escribe en la pestaña.

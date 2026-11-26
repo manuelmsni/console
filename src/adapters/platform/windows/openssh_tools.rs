@@ -13,7 +13,7 @@ use windows_sys::Win32::System::Services::{
 };
 
 use crate::application::ports::SshTools;
-use crate::domain::ssh::{LoginCheck, SshAgentStatus, SshDestination, SshKeyInfo, SshKeyName};
+use crate::domain::ssh::{hosts_in_ssh_config, LoginCheck, SshAgentStatus, SshDestination, SshKeyInfo, SshKeyName};
 use crate::i18n::tr;
 
 /// Que `ssh`, `ssh-keygen` y `ssh-add` no abran una ventana negra un instante.
@@ -60,6 +60,10 @@ impl SshTools for OpenSshTools {
 
     fn public_key_file(&self, name: &SshKeyName) -> String {
         format!("{}.pub", self.private_key_file(name))
+    }
+
+    fn configured_hosts(&self) -> Vec<SshDestination> {
+        fs::read_to_string(self.ssh_folder.join("config")).map(|config| hosts_in_ssh_config(&config)).unwrap_or_default()
     }
 
     fn key_comment(&self) -> String {

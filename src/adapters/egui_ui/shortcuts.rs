@@ -63,11 +63,7 @@ impl ConsoleApp {
 
     fn run_shortcut_action(&mut self, action: ShortcutAction) {
         match action {
-            ShortcutAction::NewTab => {
-                if let Some(profile) = self.shell_profiles.first().cloned() {
-                    self.open_tab_with(&profile);
-                }
-            }
+            ShortcutAction::NewTab => self.open_new_tab_as_configured(),
             ShortcutAction::PreviousTab | ShortcutAction::NextTab => {
                 self.close_history_picker();
                 self.terminal_tabs.activate_neighbour_tab(if action == ShortcutAction::NextTab { 1 } else { -1 });

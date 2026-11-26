@@ -18,11 +18,13 @@ use adapters::encrypted_tab_journal_store::EncryptedTabJournalStore;
 use adapters::json_app_settings_store::JsonAppSettingsStore;
 use adapters::json_command_library_store::JsonCommandLibraryStore;
 use adapters::json_macro_bar_store::JsonMacroBarStore;
+use adapters::json_saved_places_store::JsonSavedPlacesStore;
 use adapters::json_ssh_server_store::JsonSshServerStore;
 use adapters::github_releases::GitHubReleases;
 use adapters::platform::{
     available_shell_profiles, claim_single_instance, prepare_terminal_host, system_display_language, wait_for_process_to_exit,
-    InstanceStartup, ShowWindowRequests, SystemClock, SystemCommandRunner, SystemSshTools, SystemWebBrowser, OPERATING_SYSTEM,
+    InstanceStartup, LaunchRequests, SystemClock, SystemCommandRunner, SystemFolderContextMenu, SystemSshTools, SystemWebBrowser,
+    OPERATING_SYSTEM,
 };
 use adapters::self_replacing_program::{SelfReplacingProgram, AFTER_UPDATE_ARGUMENT};
 use adapters::pty_shell::PtyShellLauncher;
@@ -31,9 +33,11 @@ use adapters::vt100_emulator::Vt100EmulatorFactory;
 use application::app_settings_service::AppSettingsService;
 use application::command_library_service::CommandLibraryService;
 use application::macro_bar_service::MacroBarService;
+use application::saved_places_service::SavedPlacesService;
 use application::ssh_settings::SshSettings;
 use application::terminal_tabs::{AutosavePolicy, TerminalTabs};
 use application::update_service::UpdateService;
+use domain::startup::folder_to_open_from;
 use domain::updates::{BuildKind, Version};
 
 
@@ -45,9 +49,11 @@ fn main() -> eframe::Result<()> {
     use adapters::platform::SystemUserCipher;
 
     wait_for_previous_version_after_update();
-    let show_window_requests = match claim_single_instance("") {
-        InstanceStartup::FirstInstance(show_window_requests) => show_window_requests,
-        // Ya hay una consola abierta y se le ha pedido que se muestre: no abrimos otra.
+    let folder_to_open = folder_to_open_from(&std::env::args().collect::<Vec<_>>());
+    let launch_requests = match claim_single_instance("", folder_to_open.as_deref()) {
+        InstanceStartup::FirstInstance(launch_requests) => launch_requests,
+        // Ya hay una consola abierta y se le ha pedido que se muestre (o que
+        // abra la carpeta): no abrimos otra.
         InstanceStartup::AlreadyRunning => return Ok(()),
     };
     // Son programas, no datos del usuario: en la carpeta local, que no viaja con el perfil.
@@ -67,7 +73,7 @@ fn main() -> eframe::Result<()> {
         "Console",
         window_options(),
         Box::new(|creation_context| {
-            let desktop = prepare_window(creation_context, show_window_requests);
+            let desktop = prepare_window(creation_context, launch_requests, folder_to_open);
             Ok(Box::new(build_console_app(creation_context.egui_ctx.clone(), desktop, startup)))
         }),
     )
@@ -85,8 +91,9 @@ fn main() -> eframe::Result<()> {
     let data_location = DataFolder::next_to_program_location();
     rename_portable_folder_of_older_versions(&data_location);
     rename_files_of_older_versions(&data_location);
-    let show_window_requests = match claim_single_instance(&portable_instance_scope(&data_location)) {
-        InstanceStartup::FirstInstance(show_window_requests) => show_window_requests,
+    let folder_to_open = folder_to_open_from(&std::env::args().collect::<Vec<_>>());
+    let launch_requests = match claim_single_instance(&portable_instance_scope(&data_location), folder_to_open.as_deref()) {
+        InstanceStartup::FirstInstance(launch_requests) => launch_requests,
         InstanceStartup::AlreadyRunning => return Ok(()),
     };
     // No van cifrados: son los mismos programas para todos.
@@ -100,7 +107,7 @@ fn main() -> eframe::Result<()> {
         "Console",
         window_options(),
         Box::new(move |creation_context| {
-            let desktop = prepare_window(creation_context, show_window_requests);
+            let desktop = prepare_window(creation_context, launch_requests, folder_to_open);
             let egui_context = creation_context.egui_ctx.clone();
             let key_folder = data_location.clone();
             let open_console = Box::new(move |cipher: Arc<dyn FileCipher>, desktop: DesktopIntegration| {
@@ -174,11 +181,16 @@ fn window_options() -> eframe::NativeOptions {
     }
 }
 
-/// Aspecto, icono de la bandeja y avisos de "muéstrate": nada más crear la
-/// ventana, antes que la consola (en la portable, antes de pedir la contraseña).
-fn prepare_window(creation_context: &eframe::CreationContext, show_window_requests: Option<ShowWindowRequests>) -> DesktopIntegration {
+/// Aspecto, icono de la bandeja y avisos de los lanzamientos siguientes: nada
+/// más crear la ventana, antes que la consola (en la portable, antes de pedir
+/// la contraseña; las carpetas pedidas mientras tanto esperan).
+fn prepare_window(
+    creation_context: &eframe::CreationContext,
+    launch_requests: Option<LaunchRequests>,
+    folder_to_open: Option<String>,
+) -> DesktopIntegration {
     prepare_look(&creation_context.egui_ctx);
-    DesktopIntegration::connect(creation_context, show_window_requests)
+    DesktopIntegration::connect(creation_context, launch_requests, folder_to_open)
 }
 
 fn load_settings_and_language(data: &DataFolder, system_language: &str) -> (AppSettingsService, Option<String>) {
@@ -212,6 +224,7 @@ fn build_console_app(egui_context: egui::Context, desktop: DesktopIntegration, s
     let (command_library, startup_warning) = CommandLibraryService::load(Box::new(JsonCommandLibraryStore::in_folder(&data)));
     let (macro_bar, macro_warning) =
         MacroBarService::load(Box::new(JsonMacroBarStore::in_folder(&data)), Box::new(SystemCommandRunner));
+    let (saved_places, places_warning) = SavedPlacesService::load(Box::new(JsonSavedPlacesStore::in_folder(&data)));
     let (ssh_settings, ssh_warning) =
         SshSettings::load(Arc::new(SystemSshTools::for_current_user()), Box::new(JsonSshServerStore::in_folder(&data)));
 
@@ -221,13 +234,15 @@ fn build_console_app(egui_context: egui::Context, desktop: DesktopIntegration, s
         terminal_tabs,
         command_library,
         macro_bar,
+        saved_places,
         app_settings,
         ssh_settings,
         Box::new(SystemClipboard),
         Box::new(SystemWebBrowser),
+        SystemFolderContextMenu::for_this_program().map(|menu| Box::new(menu) as Box<dyn application::ports::FolderContextMenu>),
         available_shell_profiles(),
         update_service(),
         system_language,
-        startup_warning.or(settings_warning).or(macro_warning).or(ssh_warning),
+        startup_warning.or(settings_warning).or(macro_warning).or(places_warning).or(ssh_warning),
     )
 }

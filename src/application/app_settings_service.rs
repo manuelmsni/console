@@ -1,5 +1,6 @@
 use super::ports::AppSettingsStore;
 use crate::domain::app_settings::{AppSettings, AutosaveSettings, Shortcut, ShortcutAction, Shortcuts, UpdateSettings};
+use crate::domain::startup::StartSettings;
 
 /// Casos de uso de los ajustes generales. Cada cambio se guarda al momento.
 pub struct AppSettingsService {
@@ -58,6 +59,11 @@ impl AppSettingsService {
 
     pub fn set_update_settings(&mut self, updates: UpdateSettings) -> Result<(), String> {
         self.settings.updates = updates;
+        self.store.save_settings(&self.settings)
+    }
+
+    pub fn set_start_settings(&mut self, start: StartSettings) -> Result<(), String> {
+        self.settings.start = start;
         self.store.save_settings(&self.settings)
     }
 

@@ -6,6 +6,7 @@ use crate::domain::command_library::CommandLibrary;
 use crate::domain::history_scrollbar::HistoryView;
 use crate::domain::local_time::LocalDateTime;
 use crate::domain::macro_bar::MacroBar;
+use crate::domain::saved_places::SavedPlaces;
 use crate::domain::screen_snapshot::ScreenSnapshot;
 use crate::domain::shell_profile::ShellProfile;
 use crate::domain::ssh::{LoginCheck, SshAgentStatus, SshDestination, SshKeyInfo, SshKeyName};
@@ -16,7 +17,8 @@ use crate::domain::updates::Release;
 
 /// Arranca procesos de terminal (cmd, PowerShell...).
 pub trait ShellLauncher {
-    fn launch(&self, profile: &ShellProfile, size: TerminalSize) -> Result<Box<dyn RunningShell>, String>;
+    /// `folder`: dónde empieza. `None`, o una carpeta que no existe: la del usuario.
+    fn launch(&self, profile: &ShellProfile, folder: Option<&str>, size: TerminalSize) -> Result<Box<dyn RunningShell>, String>;
 }
 
 /// Un proceso de terminal en marcha con el que se habla por bytes.
@@ -69,6 +71,13 @@ pub trait MacroBarStore {
     fn save_macro_bar(&self, bar: &MacroBar) -> Result<(), String>;
 }
 
+/// Guarda y recupera las rutas guardadas de cada terminal.
+pub trait SavedPlacesStore {
+    /// `Ok(None)` si todavía no se ha guardado nunca nada.
+    fn load_places(&self) -> Result<Option<SavedPlaces>, String>;
+    fn save_places(&self, places: &SavedPlaces) -> Result<(), String>;
+}
+
 /// Ejecuta comandos en el equipo, fuera de las pestañas (la shell del
 /// sistema, sin ventana): abrir carpetas, lanzar programas...
 pub trait SystemCommandRunner {
@@ -105,6 +114,8 @@ pub trait SshTools: Send + Sync {
     /// Intenta entrar sin escribir nada. Tarda unos segundos: no llamar desde la interfaz.
     fn check_login_without_typing(&self, destination: &SshDestination) -> LoginCheck;
     fn agent_status(&self) -> SshAgentStatus;
+    /// Los servidores con nombre en `~/.ssh/config` (vacío si no hay fichero).
+    fn configured_hosts(&self) -> Vec<SshDestination>;
     /// Deja el agente arrancado y en inicio automático. Pide permiso de
     /// administrador y espera a que se conceda: no llamar desde la interfaz.
     fn enable_agent(&self) -> Result<(), String>;
@@ -121,6 +132,17 @@ pub trait AppSettingsStore {
     /// `Ok(None)` si todavía no se han cambiado nunca.
     fn load_settings(&self) -> Result<Option<AppSettings>, String>;
     fn save_settings(&self, settings: &AppSettings) -> Result<(), String>;
+}
+
+/// La opción "Abrir Console aquí" del menú del botón derecho de las carpetas
+/// del Explorador. Lo que hay apuntado en el sistema es lo que vale: no se
+/// guarda en los ajustes.
+pub trait FolderContextMenu {
+    /// Si está puesta y abre este mismo programa.
+    fn is_enabled(&self) -> bool;
+    /// `label`: el texto del menú, en el idioma de la app.
+    fn enable(&self, label: &str) -> Result<(), String>;
+    fn disable(&self) -> Result<(), String>;
 }
 
 /// La hora del sistema.

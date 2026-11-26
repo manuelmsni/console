@@ -118,6 +118,48 @@ pub fn connect_command(destination: &SshDestination) -> String {
     format!("ssh {}", destination.as_str())
 }
 
+/// Los nombres de las líneas `Host` de `~/.ssh/config` (sin los patrones con
+/// `*`, `?` o `!`, que no son un servidor concreto).
+pub fn hosts_in_ssh_config(config: &str) -> Vec<SshDestination> {
+    let mut hosts = Vec::new();
+    for line in config.lines() {
+        let line = line.trim();
+        let Some((keyword, names)) = line.split_once(|character: char| character.is_whitespace() || character == '=') else {
+            continue;
+        };
+        if !keyword.eq_ignore_ascii_case("host") {
+            continue;
+        }
+        let names = names.trim_start_matches(|character: char| character.is_whitespace() || character == '=');
+        for name in names.split_whitespace() {
+            if name.contains(['*', '?', '!']) {
+                continue;
+            }
+            if let Ok(host) = SshDestination::parse(name) {
+                if !hosts.contains(&host) {
+                    hosts.push(host);
+                }
+            }
+        }
+    }
+    hosts
+}
+
+/// Las que encajan con lo escrito hasta ahora: empiezan igual (entero o
+/// después de `usuario@`), sin distinguir mayúsculas. Con nada escrito, todas;
+/// si ya está escrita entera, ninguna.
+pub fn destination_suggestions<'a>(known: &'a [SshDestination], typed: &str) -> Vec<&'a SshDestination> {
+    let typed = typed.trim().to_lowercase();
+    known
+        .iter()
+        .filter(|destination| {
+            let candidate = destination.as_str().to_lowercase();
+            let host = candidate.split_once('@').map_or(candidate.as_str(), |(_, host)| host);
+            candidate != typed && (candidate.starts_with(&typed) || host.starts_with(&typed))
+        })
+        .collect()
+}
+
 /// Crea una clave nueva. `ssh-keygen` pide la frase de paso dos veces, sin mostrarla.
 pub fn generate_key_command(private_key_file: &str, comment: &str) -> String {
     format!("ssh-keygen -t ed25519 -C \"{}\" -f \"{private_key_file}\"", safe_key_comment(comment))
@@ -142,6 +184,27 @@ fn safe_key_comment(comment: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn destinations(names: &[&str]) -> Vec<SshDestination> {
+        names.iter().map(|name| SshDestination::parse(name).unwrap()).collect()
+    }
+
+    #[test]
+    fn hosts_come_from_the_ssh_config_without_patterns() {
+        let config = "Host web prod-db\n  HostName 10.0.0.1\n\nhost=backup\nHost *.internal !bad\nHostName ignored\n";
+        assert_eq!(hosts_in_ssh_config(config), destinations(&["web", "prod-db", "backup"]));
+    }
+
+    #[test]
+    fn suggestions_follow_what_is_typed_and_vanish_when_it_differs() {
+        let known = destinations(&["ana@web.example.com", "prod-db", "Pruebas"]);
+        let names = |typed: &str| destination_suggestions(&known, typed).iter().map(|d| d.as_str().to_string()).collect::<Vec<_>>();
+        assert_eq!(names("").len(), 3);
+        assert_eq!(names("pr"), vec!["prod-db", "Pruebas"]);
+        assert_eq!(names("web"), vec!["ana@web.example.com"]);
+        assert!(names("zzz").is_empty());
+        assert!(names("prod-db").is_empty());
+    }
 
     #[test]
     fn accepts_usual_destinations() {

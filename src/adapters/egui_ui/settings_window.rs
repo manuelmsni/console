@@ -2,11 +2,12 @@
 //! un valor más en `SettingsTab` y su módulo con lo que se dibuja dentro.
 
 use eframe::egui::{self, Align, Align2, Frame, Key, Layout, Margin, RichText, Rounding, ScrollArea, Ui};
-use egui_material_icons::icons::{ICON_CLOSE, ICON_KEYBOARD, ICON_SETTINGS, ICON_VPN_KEY};
+use egui_material_icons::icons::{ICON_BOOKMARKS, ICON_CLOSE, ICON_KEYBOARD, ICON_SETTINGS, ICON_VPN_KEY};
 
 use super::dialog_backdrop::{backdrop_was_clicked, keep_dialog_on_top};
-use super::general_tab::{show_general_tab, GeneralAction, UpdatesOverview};
+use super::general_tab::{show_general_tab, GeneralAction, NewTabsOverview, UpdatesOverview};
 use super::material_widgets::{icon_button, section_tab};
+use super::places_tab::{PlacesAction, PlacesOverview, PlacesTabState};
 use super::shortcuts_tab::{ShortcutsAction, ShortcutsTabState};
 use super::ssh_keys_tab::{SshKeysAction, SshKeysTabState};
 use super::theme::palette;
@@ -19,16 +20,18 @@ const CONTENT_HEIGHT: f32 = 460.0;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SettingsTab {
     General,
+    Places,
     Shortcuts,
     SshKeys,
 }
 
 impl SettingsTab {
-    const ALL: [SettingsTab; 3] = [SettingsTab::General, SettingsTab::Shortcuts, SettingsTab::SshKeys];
+    const ALL: [SettingsTab; 4] = [SettingsTab::General, SettingsTab::Places, SettingsTab::Shortcuts, SettingsTab::SshKeys];
 
     fn icon(self) -> &'static str {
         match self {
             SettingsTab::General => ICON_SETTINGS,
+            SettingsTab::Places => ICON_BOOKMARKS,
             SettingsTab::Shortcuts => ICON_KEYBOARD,
             SettingsTab::SshKeys => ICON_VPN_KEY,
         }
@@ -37,6 +40,7 @@ impl SettingsTab {
     fn title(self) -> String {
         match self {
             SettingsTab::General => tr("settings.tab.general"),
+            SettingsTab::Places => tr("settings.tab.places"),
             SettingsTab::Shortcuts => tr("settings.tab.shortcuts"),
             SettingsTab::SshKeys => tr("settings.tab.ssh_keys"),
         }
@@ -46,12 +50,14 @@ impl SettingsTab {
 /// Lo que se ha pedido en la pestaña visible; se aplica después de dibujarla.
 enum TabActions {
     General(Vec<GeneralAction>),
+    Places(Vec<PlacesAction>),
     Shortcuts(Vec<ShortcutsAction>),
     SshKeys(Vec<SshKeysAction>),
 }
 
 pub(super) struct SettingsWindow {
     active_tab: SettingsTab,
+    places: PlacesTabState,
     shortcuts: ShortcutsTabState,
     ssh_keys: SshKeysTabState,
 }
@@ -64,6 +70,10 @@ impl SettingsWindow {
     pub fn shortcuts_mut(&mut self) -> &mut ShortcutsTabState {
         &mut self.shortcuts
     }
+
+    pub fn places_mut(&mut self) -> &mut PlacesTabState {
+        &mut self.places
+    }
 }
 
 impl ConsoleApp {
@@ -74,6 +84,7 @@ impl ConsoleApp {
         }
         self.settings_window = Some(SettingsWindow {
             active_tab: SettingsTab::General,
+            places: PlacesTabState::default(),
             shortcuts: ShortcutsTabState::default(),
             ssh_keys: SshKeysTabState::new(self.ssh_settings.keys()),
         });
@@ -123,7 +134,23 @@ impl ConsoleApp {
                                 current_version: self.updates.current_version(),
                                 is_checking: self.updates.is_checking(),
                             };
-                            TabActions::General(show_general_tab(ui, self.app_settings.settings(), &updates))
+                            let new_tabs = NewTabsOverview {
+                                shell_profiles: &self.shell_profiles,
+                                folder_context_menu_is_enabled: self
+                                    .folder_context_menu
+                                    .as_ref()
+                                    .map(|_| self.folder_context_menu_is_enabled),
+                            };
+                            TabActions::General(show_general_tab(ui, self.app_settings.settings(), &new_tabs, &updates))
+                        }
+                        SettingsTab::Places => {
+                            let known_servers = self.ssh_settings.known_destinations();
+                            let overview = PlacesOverview {
+                                shell_profiles: &self.shell_profiles,
+                                places: self.saved_places.places(),
+                                ssh_servers: &known_servers,
+                            };
+                            TabActions::Places(settings.places.show(ui, &overview))
                         }
                         SettingsTab::Shortcuts => TabActions::Shortcuts(settings.shortcuts.show(ui, self.app_settings.settings())),
                         SettingsTab::SshKeys => TabActions::SshKeys(settings.ssh_keys.show(ui, &self.ssh_settings)),
@@ -138,6 +165,7 @@ impl ConsoleApp {
         settings.active_tab = active_tab;
         match tab_actions {
             Some(TabActions::General(actions)) => self.apply_general_actions(actions),
+            Some(TabActions::Places(actions)) => self.apply_places_actions(actions),
             Some(TabActions::Shortcuts(actions)) => self.apply_shortcuts_actions(actions),
             Some(TabActions::SshKeys(actions)) => self.apply_ssh_keys_actions(actions, egui_context),
             None => {}

@@ -2,6 +2,7 @@
 //! Windows usa la pseudoconsola (ConPTY) y en Linux o macOS, un PTY normal.
 
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
 use std::thread;
@@ -28,15 +29,16 @@ impl PtyShellLauncher {
 }
 
 impl ShellLauncher for PtyShellLauncher {
-    fn launch(&self, profile: &ShellProfile, size: TerminalSize) -> Result<Box<dyn RunningShell>, String> {
+    fn launch(&self, profile: &ShellProfile, folder: Option<&str>, size: TerminalSize) -> Result<Box<dyn RunningShell>, String> {
         let pty_pair = native_pty_system()
             .openpty(pty_size_of(size))
             .map_err(|error| tr_args("terminal.error.pseudoconsole", &[("error", &error)]))?;
 
         let mut command = CommandBuilder::new(&profile.program);
         command.args(&profile.arguments);
-        if let Some(home_folder) = dirs::home_dir() {
-            command.cwd(home_folder);
+        let existing_folder = folder.map(PathBuf::from).filter(|folder| folder.is_dir());
+        if let Some(start_folder) = existing_folder.or_else(dirs::home_dir) {
+            command.cwd(start_folder);
         }
 
         let child = pty_pair

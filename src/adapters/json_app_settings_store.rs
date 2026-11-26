@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use super::data_folder::{DataFile, DataFolder};
 use crate::application::ports::AppSettingsStore;
 use crate::domain::app_settings::{AppSettings, AutosaveSettings, Shortcut, ShortcutAction, Shortcuts, UpdateSettings};
+use crate::domain::startup::{FolderChoice, ShellChoice, StartSettings};
 use crate::domain::updates::Version;
 use crate::i18n::tr_args;
 
@@ -36,6 +37,66 @@ struct StoredSettings {
     /// Falta en ficheros de versiones anteriores: entonces, lo de serie.
     #[serde(default)]
     updates: StoredUpdates,
+    /// Falta en ficheros de versiones anteriores: entonces, lo de siempre
+    /// (la primera terminal, en la carpeta del usuario).
+    #[serde(default)]
+    start: StoredStart,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct StoredStart {
+    shell: StoredShellChoice,
+    folder: StoredFolderChoice,
+}
+
+/// `"first_available"`, `"ask_each_time"` o `{"profile": "PowerShell"}`.
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum StoredShellChoice {
+    #[default]
+    FirstAvailable,
+    AskEachTime,
+    Profile(String),
+}
+
+/// `"home"`, `"ask_at_start"` o `{"fixed": "C:\carpeta"}`.
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum StoredFolderChoice {
+    #[default]
+    Home,
+    AskAtStart,
+    Fixed(String),
+}
+
+impl StoredStart {
+    fn from_domain(start: &StartSettings) -> Self {
+        let shell = match &start.shell {
+            ShellChoice::FirstAvailable => StoredShellChoice::FirstAvailable,
+            ShellChoice::AskEachTime => StoredShellChoice::AskEachTime,
+            ShellChoice::Profile(name) => StoredShellChoice::Profile(name.clone()),
+        };
+        let folder = match &start.folder {
+            FolderChoice::Home => StoredFolderChoice::Home,
+            FolderChoice::AskAtStart => StoredFolderChoice::AskAtStart,
+            FolderChoice::Fixed(folder) => StoredFolderChoice::Fixed(folder.clone()),
+        };
+        Self { shell, folder }
+    }
+
+    fn into_domain(self) -> StartSettings {
+        let shell = match self.shell {
+            StoredShellChoice::FirstAvailable => ShellChoice::FirstAvailable,
+            StoredShellChoice::AskEachTime => ShellChoice::AskEachTime,
+            StoredShellChoice::Profile(name) => ShellChoice::Profile(name),
+        };
+        let folder = match self.folder {
+            StoredFolderChoice::Home => FolderChoice::Home,
+            StoredFolderChoice::AskAtStart => FolderChoice::AskAtStart,
+            StoredFolderChoice::Fixed(folder) => FolderChoice::Fixed(folder),
+        };
+        StartSettings { shell, folder }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -91,6 +152,7 @@ impl AppSettingsStore for JsonAppSettingsStore {
             shortcuts,
             new_line_shortcut_enabled: stored.new_line_shortcut_enabled,
             updates,
+            start: stored.start.into_domain(),
         }))
     }
 
@@ -113,6 +175,7 @@ impl AppSettingsStore for JsonAppSettingsStore {
                 check_automatically: settings.updates.check_automatically,
                 skipped_version: settings.updates.skipped_version.map(|version| version.to_string()),
             },
+            start: StoredStart::from_domain(&settings.start),
         };
         let json = serde_json::to_string_pretty(&stored).map_err(|error| error.to_string())?;
         self.file.write_atomically(&json)
@@ -134,4 +197,29 @@ fn stored_name_of(action: ShortcutAction) -> &'static str {
 
 fn new_line_shortcut_is_enabled_by_default() -> bool {
     AppSettings::default().new_line_shortcut_enabled
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_terminal_and_folder_of_new_tabs_survive_saving_and_loading() {
+        let choices = [
+            StartSettings::default(),
+            StartSettings { shell: ShellChoice::AskEachTime, folder: FolderChoice::AskAtStart },
+            StartSettings { shell: ShellChoice::Profile("PowerShell".into()), folder: FolderChoice::Fixed(r"C:\Mis cosas".into()) },
+        ];
+        for start in choices {
+            let json = serde_json::to_string(&StoredStart::from_domain(&start)).unwrap();
+            assert_eq!(serde_json::from_str::<StoredStart>(&json).unwrap().into_domain(), start);
+        }
+    }
+
+    #[test]
+    fn settings_of_older_versions_open_like_before() {
+        let older = r#"{ "version": 1, "autosave": { "enabled": false, "interval_seconds": 10 }, "shortcuts": {} }"#;
+        let stored: StoredSettings = serde_json::from_str(older).unwrap();
+        assert_eq!(stored.start.into_domain(), StartSettings::default());
+    }
 }

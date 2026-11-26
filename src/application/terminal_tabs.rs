@@ -83,9 +83,10 @@ impl TerminalTabs {
         self.autosave = autosave;
     }
 
-    pub fn open_tab(&mut self, profile: &ShellProfile) -> Result<(), String> {
+    /// `folder`: dónde empieza la consola. `None`: en la carpeta del usuario.
+    pub fn open_tab(&mut self, profile: &ShellProfile, folder: Option<&str>) -> Result<(), String> {
         let size = self.active_session().map_or(SIZE_BEFORE_FIRST_LAYOUT, TerminalSession::size);
-        let shell = self.shell_launcher.launch(profile, size)?;
+        let shell = self.shell_launcher.launch(profile, folder, size)?;
         let emulator = self.emulator_factory.create_emulator(size);
 
         let record = TabRecord {
@@ -98,8 +99,9 @@ impl TerminalTabs {
     }
 
     /// Vuelve a abrir las pestañas guardadas, cada una con su pantalla e
-    /// historial reconstruidos desde su diario. Devuelve cuántas.
-    pub fn reopen_tabs_from_journals(&mut self, profiles: &[ShellProfile]) -> Result<usize, String> {
+    /// historial reconstruidos desde su diario; la consola nueva empieza en
+    /// `folder` (`None`: la del usuario). Devuelve cuántas.
+    pub fn reopen_tabs_from_journals(&mut self, profiles: &[ShellProfile], folder: Option<&str>) -> Result<usize, String> {
         let tabs = self.journal_store.load_open_tabs()?;
         let mut reopened = 0;
         for (record, journal) in tabs {
@@ -111,7 +113,7 @@ impl TerminalTabs {
             let initial_size = first_size_in(&journal).unwrap_or(SIZE_BEFORE_FIRST_LAYOUT);
             let mut emulator = self.emulator_factory.create_emulator(initial_size);
             let (command_history, size) = replay_journal(&journal, emulator.as_mut(), initial_size);
-            let shell = self.shell_launcher.launch(profile, size)?;
+            let shell = self.shell_launcher.launch(profile, folder, size)?;
 
             self.next_tab_id = self.next_tab_id.max(record.id.0 + 1);
             let restored_at = self.clock.now();
@@ -521,7 +523,7 @@ mod tests {
     struct SilentShellLauncher;
 
     impl ShellLauncher for SilentShellLauncher {
-        fn launch(&self, _profile: &ShellProfile, _size: TerminalSize) -> Result<Box<dyn RunningShell>, String> {
+        fn launch(&self, _profile: &ShellProfile, _folder: Option<&str>, _size: TerminalSize) -> Result<Box<dyn RunningShell>, String> {
             Ok(Box::new(SilentShell))
         }
     }
@@ -598,7 +600,7 @@ mod tests {
         }
 
         fn open_cmd_tab(&mut self) {
-            self.tabs.open_tab(&ShellProfile::new("cmd", "cmd.exe", &[])).unwrap();
+            self.tabs.open_tab(&ShellProfile::new("cmd", "cmd.exe", &[]), None).unwrap();
             self.tabs.forward_all_shell_output();
         }
 
@@ -641,7 +643,7 @@ mod tests {
         first_run.open_cmd_tab(); // nunca se guarda
 
         let mut second_run = TabsUnderTest::with(MANUAL_SAVING, disk);
-        let reopened = second_run.tabs.reopen_tabs_from_journals(&[ShellProfile::new("cmd", "cmd.exe", &[])]).unwrap();
+        let reopened = second_run.tabs.reopen_tabs_from_journals(&[ShellProfile::new("cmd", "cmd.exe", &[])], None).unwrap();
 
         assert_eq!(reopened, 1);
         assert_eq!(second_run.tabs.active_session_mut().unwrap().command_history(), ["git status"]);

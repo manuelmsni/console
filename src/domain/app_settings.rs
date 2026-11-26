@@ -1,9 +1,11 @@
 //! Ajustes generales de la aplicación: el idioma, el autoguardado de las
-//! pestañas, los atajos de teclado y las actualizaciones.
+//! pestañas, los atajos de teclado, las actualizaciones y con qué terminal y
+//! en qué carpeta se abren las pestañas nuevas.
 
 use std::collections::BTreeMap;
 use std::fmt;
 
+use super::startup::StartSettings;
 use super::updates::Version;
 use crate::i18n::{tr, tr_args};
 
@@ -203,6 +205,8 @@ pub struct AppSettings {
     /// ejecutar. Apagado, esa combinación llega a la consola como siempre.
     pub new_line_shortcut_enabled: bool,
     pub updates: UpdateSettings,
+    /// Terminal y carpeta de las pestañas nuevas (o preguntar).
+    pub start: StartSettings,
 }
 
 impl Default for AppSettings {
@@ -213,6 +217,7 @@ impl Default for AppSettings {
             shortcuts: Shortcuts::default(),
             new_line_shortcut_enabled: true,
             updates: UpdateSettings::default(),
+            start: StartSettings::default(),
         }
     }
 }

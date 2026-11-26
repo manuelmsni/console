@@ -9,6 +9,13 @@ captures the mouse.
 
 - **Tabs** with cmd or PowerShell. `Ctrl + Shift + T` opens one, middle click or `×` closes
   it, `Ctrl + ←` / `Ctrl + →` switch between them. Double-click a tab to rename it.
+- **Start where you want** (Settings → General): choose the terminal and the folder new tabs
+  start in, or have the app ask each time it opens.
+- **Places** (Settings → Places): for each terminal, folders and SSH servers (optionally with a
+  folder on the server), each with an optional alias. Hover over the terminal in the `+` menu to
+  open a tab right there — an SSH place logs in and goes to its folder.
+- **“Open Console here”** in Explorer's right-click menu on folders (turned on in Settings →
+  General), like “Git Bash Here”. If Console is already open, it adds a tab in that folder.
 - **Saved commands** in a collapsible side panel, organised in folders:
   - `▶` runs a command; clicking its name types it without running it, so you can edit it.
   - Drag and drop to reorder or move into folders; double-click a name to rename it.
@@ -83,13 +90,18 @@ password you choose the first time you open it.
 |---|---|
 | `commands.json` | Saved commands |
 | `macros.json` | Macros bar |
-| `settings.json` | Language, autosave, keyboard shortcuts and line breaks |
+| `places.json` | Saved folders and SSH servers of each terminal |
+| `settings.json` | Language, autosave, keyboard shortcuts, line breaks, and the terminal and folder of new tabs |
 | `ssh_servers.json` | SSH server list |
 | `tabs\index.json` | Saved tabs and their order |
 | `tabs\<id>.journal` | What happened in each saved tab (compacted above 4 MB) |
 | `key.json` | Portable only: salt and parameters to check the password |
 
 SSH keys stay in `%USERPROFILE%\.ssh`, where the system's `ssh` looks for them.
+
+“Open Console here” is written in the registry, only for your user
+(`HKEY_CURRENT_USER\Software\Classes\Directory\shell` and `...\Directory\Background\shell`),
+and turning it off in the settings removes it.
 
 The program also unpacks Microsoft's ConPTY (`conpty.dll` and `OpenConsole.exe`, see
 [Third-party components](#third-party-components)) into `%LOCALAPPDATA%\console\conpty\`, or into

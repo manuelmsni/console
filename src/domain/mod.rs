@@ -10,10 +10,12 @@ pub mod local_time;
 pub mod macro_bar;
 #[cfg_attr(not(feature = "portable"), allow(dead_code))]
 pub mod master_password;
+pub mod saved_places;
 pub mod screen_snapshot;
 pub mod shell_profile;
 pub mod shell_prompt;
 pub mod ssh;
+pub mod startup;
 pub mod tab_journal;
 pub mod terminal_grid;
 pub mod terminal_keys;
